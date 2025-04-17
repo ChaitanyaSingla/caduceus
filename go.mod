@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	emperror.dev/emperror v0.33.0
+	github.com/aws/aws-sdk-go v1.44.83
 	github.com/davecgh/go-spew v1.1.1
 	github.com/go-kit/kit v0.12.0
 	github.com/gorilla/mux v1.8.0

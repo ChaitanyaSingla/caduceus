@@ -139,6 +139,7 @@ func caduceus(arguments []string) int {
 		}).Do),
 		CustomPIDs:        caduceusConfig.Sender.CustomPIDs,
 		DisablePartnerIDs: caduceusConfig.Sender.DisablePartnerIDs,
+		AwsSqsEnabled:     caduceusConfig.Sender.AwsSqsEnabled,
 	}.New()
 
 	if err != nil {

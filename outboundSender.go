@@ -37,6 +37,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/kit/metrics"
@@ -109,6 +112,9 @@ type OutboundSenderFactory struct {
 	DisablePartnerIDs bool
 
 	QueryLatency metrics.Histogram
+
+	// AwsSqsEnabled dictate whether AWS SQS is enabled
+	AwsSqsEnabled bool
 }
 
 type OutboundSender interface {
@@ -159,6 +165,8 @@ type CaduceusOutboundSender struct {
 	customPIDs                       []string
 	disablePartnerIDs                bool
 	clientMiddleware                 func(httpClient) httpClient
+	sqsClient                        *sqs.SQS
+	sqsQueueURL                      string
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -211,6 +219,17 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		customPIDs:        osf.CustomPIDs,
 		disablePartnerIDs: osf.DisablePartnerIDs,
 		clientMiddleware:  osf.ClientMiddleware,
+	}
+
+	if osf.AwsSqsEnabled {
+		sess, err := session.NewSession(&aws.Config{
+			Region: aws.String("us-east-1"),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create AWS session: %w", err)
+		}
+		caduceusOutboundSender.sqsClient = sqs.New(sess)
+		caduceusOutboundSender.sqsQueueURL = "https://sqs.us-east-1.amazonaws.com/your-account-id/" + caduceusOutboundSender.id
 	}
 
 	// Don't share the secret with others when there is an error.
@@ -455,22 +474,53 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 		return
 	}
 
-	select {
-	case obs.queue.Load().(chan *wrp.Message) <- msg:
-		obs.queueDepthGauge.Add(1.0)
-		level.Debug(obs.logger).Log(
-			logging.MessageKey(), "event added to outbound queue",
+	if obs.sqsClient != nil {
+		msgBytes, err := json.Marshal(msg)
+		if err != nil {
+			level.Info(obs.logger).Log(
+				logging.MessageKey(), "error while marshalling msg for AWS SQS "+err.Error(),
+				"event.source", msg.Source,
+				"event.destination", msg.Destination,
+			)
+			return
+		}
+
+		_, err = obs.sqsClient.SendMessage(&sqs.SendMessageInput{
+			QueueUrl:    aws.String(obs.sqsQueueURL),
+			MessageBody: aws.String(string(msgBytes)),
+		})
+		if err != nil {
+			level.Info(obs.logger).Log(
+				logging.MessageKey(), "error while sending msg to AWS SQS "+err.Error(),
+				"event.source", msg.Source,
+				"event.destination", msg.Destination,
+			)
+			return
+		}
+
+		level.Info(obs.logger).Log(
+			logging.MessageKey(), "event added to outbound queue using AWS SQS",
 			"event.source", msg.Source,
 			"event.destination", msg.Destination,
 		)
-	default:
-		level.Debug(obs.logger).Log(
-			logging.MessageKey(), "queue full. event dropped",
-			"event.source", msg.Source,
-			"event.destination", msg.Destination,
-		)
-		obs.queueOverflow()
-		obs.droppedQueueFullCounter.Add(1.0)
+	} else {
+		select {
+		case obs.queue.Load().(chan *wrp.Message) <- msg:
+			obs.queueDepthGauge.Add(1.0)
+			level.Debug(obs.logger).Log(
+				logging.MessageKey(), "event added to outbound queue",
+				"event.source", msg.Source,
+				"event.destination", msg.Destination,
+			)
+		default:
+			level.Debug(obs.logger).Log(
+				logging.MessageKey(), "queue full. event dropped",
+				"event.source", msg.Source,
+				"event.destination", msg.Destination,
+			)
+			obs.queueOverflow()
+			obs.droppedQueueFullCounter.Add(1.0)
+		}
 	}
 }
 
@@ -504,74 +554,106 @@ func (obs *CaduceusOutboundSender) Empty(droppedCounter metrics.Counter) {
 func (obs *CaduceusOutboundSender) dispatcher() {
 	defer obs.wg.Done()
 	var (
-		msg            *wrp.Message
-		urls           *ring.Ring
-		secret, accept string
-		ok             bool
+		msg *wrp.Message
+		ok  bool
 	)
 
 Loop:
 	for {
-		// Always pull a new queue in case we have been cutoff or are shutting
-		// down.
-		msgQueue := obs.queue.Load().(chan *wrp.Message)
-		select {
-		// The dispatcher cannot get stuck blocking here forever (caused by an
-		// empty queue that is replaced and then Queue() starts adding to the
-		// new queue) because:
-		// 	- queue is only replaced on cutoff and shutdown
-		//  - on cutoff, the first queue is always full so we will definitely
-		//    get a message, drop it because we're cut off, then get the new
-		//    queue and block until the cut off ends and Queue() starts queueing
-		//    messages again.
-		//  - on graceful shutdown, the queue is closed and then the dispatcher
-		//    will send all messages, then break the loop, gather workers, and
-		//    exit.
-		//  - on non graceful shutdown, the queue is closed and then replaced
-		//    with a new, empty queue that is also closed.
-		//      - If the first queue is empty, we immediately break the loop,
-		//        gather workers, and exit.
-		//      - If the first queue has messages, we drop a message as expired
-		//        pull in the new queue which is empty and closed, break the
-		//        loop, gather workers, and exit.
-		case msg, ok = <-msgQueue:
-			// This is only true when a queue is empty and closed, which for us
-			// only happens on Shutdown().
-			if !ok {
-				break Loop
-			}
-			obs.queueDepthGauge.Add(-1.0)
-			obs.mutex.RLock()
-			urls = obs.urls
-			// Move to the next URL to try 1st the next time.
-			// This is okay because we run a single dispatcher and it's the
-			// only one updating this field.
-			obs.urls = obs.urls.Next()
-			deliverUntil := obs.deliverUntil
-			dropUntil := obs.dropUntil
-			secret = obs.listener.Webhook.Config.Secret
-			accept = obs.listener.Webhook.Config.ContentType
-			obs.mutex.RUnlock()
-
-			now := time.Now()
-
-			if now.Before(dropUntil) {
-				obs.droppedCutoffCounter.Add(1.0)
+		if obs.sqsClient != nil {
+			consumedMessage, err := obs.sqsClient.ReceiveMessage(&sqs.ReceiveMessageInput{
+				QueueUrl:            aws.String(obs.sqsQueueURL),
+				MaxNumberOfMessages: aws.Int64(1),
+			})
+			if err != nil || len(consumedMessage.Messages) == 0 {
+				obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Error while consuming messages from AWS Sqs", logging.ErrorKey(), err)
 				continue
 			}
-			if now.After(deliverUntil) {
-				obs.Empty(obs.droppedExpiredCounter)
+
+			sqsMsg := consumedMessage.Messages[0]
+			msg = &wrp.Message{}
+			err = json.Unmarshal([]byte(*sqsMsg.Body), msg)
+			if err != nil {
+				obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Failed to unmarshal SQS message", logging.ErrorKey(), err)
 				continue
 			}
-			obs.workers.Acquire()
-			obs.currentWorkersGauge.Add(1.0)
 
-			go obs.send(urls, secret, accept, msg)
+			obs.sendMessage(msg)
+
+			_, err = obs.sqsClient.DeleteMessage(&sqs.DeleteMessageInput{
+				QueueUrl:      aws.String(obs.sqsQueueURL),
+				ReceiptHandle: sqsMsg.ReceiptHandle,
+			})
+			if err != nil {
+				obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Failed to delete AWS SQS message", logging.ErrorKey(), err)
+			}
+		} else {
+			// Always pull a new queue in case we have been cutoff or are shutting
+			// down.
+			msgQueue := obs.queue.Load().(chan *wrp.Message)
+			select {
+			// The dispatcher cannot get stuck blocking here forever (caused by an
+			// empty queue that is replaced and then Queue() starts adding to the
+			// new queue) because:
+			// 	- queue is only replaced on cutoff and shutdown
+			//  - on cutoff, the first queue is always full so we will definitely
+			//    get a message, drop it because we're cut off, then get the new
+			//    queue and block until the cut off ends and Queue() starts queueing
+			//    messages again.
+			//  - on graceful shutdown, the queue is closed and then the dispatcher
+			//    will send all messages, then break the loop, gather workers, and
+			//    exit.
+			//  - on non graceful shutdown, the queue is closed and then replaced
+			//    with a new, empty queue that is also closed.
+			//      - If the first queue is empty, we immediately break the loop,
+			//        gather workers, and exit.
+			//      - If the first queue has messages, we drop a message as expired
+			//        pull in the new queue which is empty and closed, break the
+			//        loop, gather workers, and exit.
+			case msg, ok = <-msgQueue:
+				// This is only true when a queue is empty and closed, which for us
+				// only happens on Shutdown().
+				if !ok {
+					break Loop
+				}
+				obs.sendMessage(msg)
+			}
 		}
 	}
 	for i := 0; i < obs.maxWorkers; i++ {
 		obs.workers.Acquire()
 	}
+}
+
+func (obs *CaduceusOutboundSender) sendMessage(msg *wrp.Message) {
+	obs.queueDepthGauge.Add(-1.0)
+	obs.mutex.RLock()
+	urls := obs.urls
+
+	// Move to the next URL to try 1st the next time.
+	// This is okay because we run a single dispatcher and it's the
+	// only one updating this field.
+	obs.urls = obs.urls.Next()
+	deliverUntil := obs.deliverUntil
+	dropUntil := obs.dropUntil
+	secret := obs.listener.Webhook.Config.Secret
+	accept := obs.listener.Webhook.Config.ContentType
+	obs.mutex.RUnlock()
+
+	now := time.Now()
+
+	if now.Before(dropUntil) {
+		obs.droppedCutoffCounter.Add(1.0)
+		return
+	}
+	if now.After(deliverUntil) {
+		obs.Empty(obs.droppedExpiredCounter)
+		return
+	}
+	obs.workers.Acquire()
+	obs.currentWorkersGauge.Add(1.0)
+
+	go obs.send(urls, secret, accept, msg)
 }
 
 // worker is the routine that actually takes the queued messages and delivers

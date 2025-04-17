@@ -418,6 +418,9 @@ sender:
   # Defaults to 'false'.
   disablePartnerIDs: false
 
+  # AwsSqsEnabled dictate whether AWS SQS is enabled
+	awsSqsEnabled: false
+
 # (Deprecated)
 # profilerFrequency: 15
 # profilerDuration: 15

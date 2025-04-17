@@ -68,6 +68,9 @@ type SenderWrapperFactory struct {
 
 	// DisablePartnerIDs dictates whether or not to enforce the partner ID check.
 	DisablePartnerIDs bool
+
+	// AwsSqsEnabled dictate whether AWS SQS is enabled
+	AwsSqsEnabled bool
 }
 
 type SenderWrapper interface {

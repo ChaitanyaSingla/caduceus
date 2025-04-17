@@ -53,6 +53,7 @@ type SenderConfig struct {
 	DeliveryInterval                time.Duration
 	CustomPIDs                      []string
 	DisablePartnerIDs               bool
+	AwsSqsEnabled                   bool
 }
 
 type CaduceusMetricsRegistry interface {
