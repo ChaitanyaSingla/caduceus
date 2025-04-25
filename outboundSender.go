@@ -224,6 +224,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 	// b := osf.AwsSqsEnabled
 	b := true
 	if b {
+		fmt.Println("Creation a session with AWS SQS")
 		sess, err := session.NewSession(&aws.Config{
 			Region: aws.String("us-east-1"),
 		})
