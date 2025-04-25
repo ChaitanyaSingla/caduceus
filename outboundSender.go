@@ -597,6 +597,7 @@ Loop:
 			sqsMsg := consumedMessage.Messages[0]
 			msg = &wrp.Message{}
 			err = json.Unmarshal([]byte(*sqsMsg.Body), msg)
+			fmt.Println("This is the message received from AWS SQS: ", msg)
 			if err != nil {
 				obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Failed to unmarshal SQS message", logging.ErrorKey(), err)
 				continue
