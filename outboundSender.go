@@ -240,6 +240,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create AWS session: %w", err)
 		}
+		fmt.Println("Successfully created a new session with SQS client")
 		caduceusOutboundSender.sqsClient = sqs.New(sess)
 		// caduceusOutboundSender.sqsQueueURL = "https://sqs.eu-central-1.amazonaws.com/921772479357/" + caduceusOutboundSender.id
 		caduceusOutboundSender.sqsQueueURL = "https://sqs.eu-central-1.amazonaws.com/921772479357/caduceus-uat.fifo"
@@ -513,6 +514,7 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			return
 		}
 
+		fmt.Println("Successfully sent message to AWS SQS: ", msg)
 		level.Info(obs.logger).Log(
 			logging.MessageKey(), "event added to outbound queue using AWS SQS",
 			"event.source", msg.Source,
@@ -594,6 +596,7 @@ Loop:
 				continue
 			}
 
+			fmt.Println("Successfully received message from AWS SQS: ", msg)
 			obs.sendMessage(msg)
 
 			_, err = obs.sqsClient.DeleteMessage(&sqs.DeleteMessageInput{
@@ -604,6 +607,7 @@ Loop:
 			if err != nil {
 				obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Failed to delete AWS SQS message", logging.ErrorKey(), err)
 			}
+			fmt.Println("Successfully deleted message from AWS SQS: ", msg)
 		} else {
 			// Always pull a new queue in case we have been cutoff or are shutting
 			// down.
