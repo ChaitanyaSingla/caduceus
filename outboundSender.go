@@ -585,7 +585,9 @@ Loop:
 				MaxNumberOfMessages: aws.Int64(1),
 			})
 			if err != nil || len(consumedMessage.Messages) == 0 {
-				fmt.Println("Error while consuming messages from AWS Sqs: ", err)
+				if err != nil {
+					fmt.Println("Error while consuming messages from AWS Sqs: ", err)
+				}
 				obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Error while consuming messages from AWS Sqs", logging.ErrorKey(), err)
 				continue
 			}
