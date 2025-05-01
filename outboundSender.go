@@ -586,9 +586,9 @@ Loop:
 			})
 			if err != nil || len(consumedMessage.Messages) == 0 {
 				if err != nil {
-					fmt.Println("Error while consuming messages from AWS Sqs: ", err)
+					fmt.Printf("Error while consuming messages from AWS SQS: %v\n", err)
+					obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Error while consuming messages from AWS SQS", logging.ErrorKey(), err)
 				}
-				obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Error while consuming messages from AWS Sqs", logging.ErrorKey(), err)
 				continue
 			}
 
