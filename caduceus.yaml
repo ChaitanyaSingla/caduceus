@@ -433,6 +433,8 @@ sender:
   # secretKey is the AWS secretKey to go with the accessKey to access dynamodb.
   secretKey: "secretKey"
 
+  sqsAccountEndpoint: ""
+
 # (Deprecated)
 # profilerFrequency: 15
 # profilerDuration: 15

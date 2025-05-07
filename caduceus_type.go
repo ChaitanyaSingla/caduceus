@@ -58,6 +58,7 @@ type SenderConfig struct {
 	RoleBasedAccess                 bool
 	AccessKey                       string
 	SecretKey                       string
+	SqsAccountEndpoint              string
 }
 
 type CaduceusMetricsRegistry interface {

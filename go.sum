@@ -68,6 +68,8 @@ github.com/Azure/go-autorest v10.15.3+incompatible/go.mod h1:r+4oMnoxhatjLLJ6zxS
 github.com/BurntSushi/toml v0.3.1 h1:WXkYYl6Yr3qBf1K79EBnL4mak0OimBfB0XUf9Vl28OQ=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
+github.com/ChaitanyaSingla/ancla v0.0.0-20250502092626-4af5b60659b9 h1:tEEIF/2YoAsW2zjJEbZn/6NXEJV/cLHoh0SeQt2ecS4=
+github.com/ChaitanyaSingla/ancla v0.0.0-20250502092626-4af5b60659b9/go.mod h1:fBacq5RtL/JzCq8rgd4Ooe20eEV5eS3rXxndaFTPfbo=
 github.com/DataDog/datadog-go v2.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
 github.com/GaryBoone/GoStats v0.0.0-20130122001700-1993eafbef57 h1:EUQH/F+mzJBs53c75r7R5zdM/kz7BHXoWBFsVXzadVw=
@@ -965,8 +967,6 @@ github.com/xdg-go/pbkdf2 v1.0.0/go.mod h1:jrpuAogTd400dnrH08LKmI/xc1MbPOebTwRqcT
 github.com/xdg-go/scram v1.0.2/go.mod h1:1WAq6h33pAW+iRreB34OORO2Nf7qel3VV3fjBj+hCSs=
 github.com/xdg-go/stringprep v1.0.2/go.mod h1:8F9zXuvzgwmyT5DUm4GUfZGDdT3W+LCvS6+da4O5kxM=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
-github.com/xmidt-org/ancla v0.3.10 h1:GYnjNkqczLTu08AwumtmeXSDDYFdzI95LOoK5EVNm1A=
-github.com/xmidt-org/ancla v0.3.10/go.mod h1:fBacq5RtL/JzCq8rgd4Ooe20eEV5eS3rXxndaFTPfbo=
 github.com/xmidt-org/argus v0.3.9/go.mod h1:mDFS44R704gl9Fif3gkfAyvnZa53SvMepmXjYWABPvk=
 github.com/xmidt-org/argus v0.3.10-0.20201105190057-402fede05764/go.mod h1:lnMCVB/i0gOlUOOd2WbzDDgzTEqP5TipzQ8xKIw+N/I=
 github.com/xmidt-org/argus v0.3.10-0.20201217204602-66f69b12c498/go.mod h1:lnMCVB/i0gOlUOOd2WbzDDgzTEqP5TipzQ8xKIw+N/I=

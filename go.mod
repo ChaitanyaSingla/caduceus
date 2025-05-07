@@ -2,6 +2,9 @@ module github.com/xmidt-org/caduceus
 
 go 1.14
 
+// replace github.com/xmidt-org/ancla => /Users/chaitanyasingla/Desktop/Personal/forked-repo/ancla
+replace github.com/xmidt-org/ancla => github.com/ChaitanyaSingla/ancla v0.0.0-20250502092626-4af5b60659b9
+
 require (
 	emperror.dev/emperror v0.33.0
 	github.com/aws/aws-sdk-go v1.44.83
