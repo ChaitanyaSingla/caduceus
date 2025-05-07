@@ -263,11 +263,8 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		}
 		fmt.Println("Successfully created a new session with SQS client")
 		caduceusOutboundSender.sqsClient = sqs.New(sess)
-		fmt.Println("This is the AWS SQS queue name: ", osf.Listener.Webhook.CaduceusQueueName)
 		caduceusOutboundSender.sqsQueueURL = osf.SqsAccountEndpoint + osf.Listener.Webhook.CaduceusQueueName
 		fmt.Println("This is the AWS SQS queue URL: ", caduceusOutboundSender.sqsQueueURL)
-		// caduceusOutboundSender.sqsQueueURL = "https://sqs.eu-central-1.amazonaws.com/921772479357/" + caduceusOutboundSender.id
-		// caduceusOutboundSender.sqsQueueURL = "https://sqs.eu-central-1.amazonaws.com/921772479357/caduceus-uat.fifo"
 	}
 
 	// Don't share the secret with others when there is an error.
@@ -536,10 +533,8 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			return
 		}
 
-		fmt.Println("This is the AWS SQS queue URL: ", obs.sqsQueueURL)
 		_, err = obs.sqsClient.SendMessage(&sqs.SendMessageInput{
-			QueueUrl: aws.String(obs.sqsQueueURL),
-			// QueueUrl:       aws.String("https://sqs.eu-central-1.amazonaws.com/921772479357/caduceus-uat.fifo"),
+			QueueUrl:       aws.String(obs.sqsQueueURL),
 			MessageBody:    aws.String(string(msgBytes)),
 			MessageGroupId: aws.String("caduceus-uat"),
 		})
@@ -617,10 +612,8 @@ func (obs *CaduceusOutboundSender) dispatcher() {
 Loop:
 	for {
 		if obs.sqsClient != nil {
-			fmt.Println("This is the AWS SQS queue URL: ", obs.sqsQueueURL)
 			consumedMessage, err := obs.sqsClient.ReceiveMessage(&sqs.ReceiveMessageInput{
-				QueueUrl: aws.String(obs.sqsQueueURL),
-				// QueueUrl:            aws.String("https://sqs.eu-central-1.amazonaws.com/921772479357/caduceus-uat.fifo"),
+				QueueUrl:            aws.String(obs.sqsQueueURL),
 				MaxNumberOfMessages: aws.Int64(1),
 			})
 			if err != nil || len(consumedMessage.Messages) == 0 {
@@ -642,13 +635,12 @@ Loop:
 			fmt.Println("Successfully received message from AWS SQS: ", msg)
 			obs.sendMessage(msg)
 
-			fmt.Println("This is the AWS SQS queue URL: ", obs.sqsQueueURL)
 			_, err = obs.sqsClient.DeleteMessage(&sqs.DeleteMessageInput{
-				QueueUrl: aws.String(obs.sqsQueueURL),
-				// QueueUrl:      aws.String("https://sqs.eu-central-1.amazonaws.com/921772479357/caduceus-uat.fifo"),
+				QueueUrl:      aws.String(obs.sqsQueueURL),
 				ReceiptHandle: sqsMsg.ReceiptHandle,
 			})
 			if err != nil {
+				fmt.Printf("Error while deleting messages from AWS SQS: %v\n", err)
 				obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Failed to delete AWS SQS message", logging.ErrorKey(), err)
 			}
 			fmt.Println("Successfully deleted message from AWS SQS: ", msg)
