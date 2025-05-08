@@ -139,14 +139,14 @@ func caduceus(arguments []string) int {
 		}).Do),
 		CustomPIDs:        caduceusConfig.Sender.CustomPIDs,
 		DisablePartnerIDs: caduceusConfig.Sender.DisablePartnerIDs,
-		AwsSqsEnabled:     caduceusConfig.Sender.AwsSqsEnabled,
-		AwsRegion:         caduceusConfig.Sender.AwsRegion,
-		RoleBasedAccess:   caduceusConfig.Sender.RoleBasedAccess,
-		AccessKey:         caduceusConfig.Sender.AccessKey,
-		SecretKey:         caduceusConfig.Sender.SecretKey,
-		FifoBasedQueue:    caduceusConfig.Sender.FifoBasedQueue,
-		KmsEnabled:        caduceusConfig.Sender.KmsEnabled,
-		KmsKeyARN:         caduceusConfig.Sender.KmsKeyARN,
+		AwsSqsEnabled:     caduceusConfig.Sender.AwsSqs.AwsSqsEnabled,
+		AwsRegion:         caduceusConfig.Sender.AwsSqs.AwsRegion,
+		RoleBasedAccess:   caduceusConfig.Sender.AwsSqs.RoleBasedAccess,
+		AccessKey:         caduceusConfig.Sender.AwsSqs.AccessKey,
+		SecretKey:         caduceusConfig.Sender.AwsSqs.SecretKey,
+		FifoBasedQueue:    caduceusConfig.Sender.AwsSqs.FifoBasedQueue,
+		KmsEnabled:        caduceusConfig.Sender.AwsSqs.KmsEnabled,
+		KmsKeyARN:         caduceusConfig.Sender.AwsSqs.KmsKeyARN,
 	}.New()
 
 	if err != nil {

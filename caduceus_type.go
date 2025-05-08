@@ -53,14 +53,18 @@ type SenderConfig struct {
 	DeliveryInterval                time.Duration
 	CustomPIDs                      []string
 	DisablePartnerIDs               bool
-	AwsSqsEnabled                   bool
-	AwsRegion                       string
-	RoleBasedAccess                 bool
-	AccessKey                       string
-	SecretKey                       string
-	FifoBasedQueue                  bool
-	KmsEnabled                      bool
-	KmsKeyARN                       string
+	AwsSqs                          AwsSqs
+}
+
+type AwsSqs struct {
+	AwsSqsEnabled   bool
+	AwsRegion       string
+	RoleBasedAccess bool
+	AccessKey       string
+	SecretKey       string
+	FifoBasedQueue  bool
+	KmsEnabled      bool
+	KmsKeyARN       string
 }
 
 type CaduceusMetricsRegistry interface {
