@@ -283,7 +283,6 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 						"FifoQueue":                 aws.String("true"),
 						"ContentBasedDeduplication": aws.String("true"),
 						"KmsMasterKeyId":            aws.String("arn:aws:kms:eu-central-1:921772479357:key/4c5e649f-de27-4329-97fd-eb9e47063aaa"),
-						"SqsManagedSseEnabled":      aws.String("true"),
 					},
 				}
 
