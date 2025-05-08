@@ -419,10 +419,10 @@ sender:
   disablePartnerIDs: false
 
   # AwsSqsEnabled dictate whether AWS SQS is enabled
-	awsSqsEnabled: false
+  awsSqsEnabled: false
 
   # AwsRegion dictate the region for AWS SQS
-	awsRegion: ""
+  awsRegion: ""
 
   # If roleBasedAccess is enabled, accessKey and secretKey will be fetched using IAM temporary credentials
   roleBasedAccess: false
@@ -433,7 +433,14 @@ sender:
   # secretKey is the AWS secretKey to go with the accessKey to access dynamodb.
   secretKey: "secretKey"
 
-  sqsAccountEndpoint: ""
+  # fifoBasedQueue is a type of AWS SQS Queue. If not enabled, standard queue will be created
+  fifoBasedQueue: false
+  
+  # If kmsEnabled is true, then KMS will be used for encryption in AWS SQS Queue.
+  kmsEnabled: false
+  
+  # Only required if kmsEnabled is enabled. kmsKeyARN will identify the ARN which will be used for encryption in AWS SQS Queue.
+  kmsKeyARN: ""
 
 # (Deprecated)
 # profilerFrequency: 15

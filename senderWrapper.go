@@ -84,7 +84,14 @@ type SenderWrapperFactory struct {
 	// SecretKey is the AWS secretKey to go with the accessKey to access dynamodb.
 	SecretKey string
 
-	SqsAccountEndpoint string
+	// FifoBasedQueue is a type of AWS SQS Queue. If not enabled, standard queue will be created
+	FifoBasedQueue bool
+
+	// If KmsEnabled is true, then KMS will be used for encryption in AWS SQS Queue.
+	KmsEnabled bool
+
+	// Only required if KmsEnabled is enabled. KmsKeyARN will identify the ARN which will be used for encryption in AWS SQS Queue.
+	KmsKeyARN string
 }
 
 type SenderWrapper interface {
@@ -117,7 +124,9 @@ type CaduceusSenderWrapper struct {
 	roleBasedAccess     bool
 	accessKey           string
 	secretKey           string
-	sqsAccountEndpoint  string
+	fifoBasedQueue      bool
+	kmsEnabled          bool
+	kmsKeyARN           string
 }
 
 // New produces a new SenderWrapper implemented by CaduceusSenderWrapper
@@ -140,7 +149,9 @@ func (swf SenderWrapperFactory) New() (sw SenderWrapper, err error) {
 		roleBasedAccess:     swf.RoleBasedAccess,
 		accessKey:           swf.AccessKey,
 		secretKey:           swf.SecretKey,
-		sqsAccountEndpoint:  swf.SqsAccountEndpoint,
+		fifoBasedQueue:      swf.FifoBasedQueue,
+		kmsEnabled:          swf.KmsEnabled,
+		kmsKeyARN:           swf.KmsKeyARN,
 	}
 
 	if swf.Linger <= 0 {
@@ -168,23 +179,25 @@ func (swf SenderWrapperFactory) New() (sw SenderWrapper, err error) {
 func (sw *CaduceusSenderWrapper) Update(list []ancla.InternalWebhook) {
 	// We'll like need this, so let's get one ready
 	osf := OutboundSenderFactory{
-		Sender:             sw.sender,
-		CutOffPeriod:       sw.cutOffPeriod,
-		NumWorkers:         sw.numWorkersPerSender,
-		QueueSize:          sw.queueSizePerSender,
-		MetricsRegistry:    sw.metricsRegistry,
-		DeliveryRetries:    sw.deliveryRetries,
-		DeliveryInterval:   sw.deliveryInterval,
-		Logger:             sw.logger,
-		CustomPIDs:         sw.customPIDs,
-		DisablePartnerIDs:  sw.disablePartnerIDs,
-		QueryLatency:       sw.queryLatency,
-		AwsSqsEnabled:      sw.awsSqsEnabled,
-		AwsRegion:          sw.awsRegion,
-		RoleBasedAccess:    sw.roleBasedAccess,
-		AccessKey:          sw.accessKey,
-		SecretKey:          sw.secretKey,
-		SqsAccountEndpoint: sw.sqsAccountEndpoint,
+		Sender:            sw.sender,
+		CutOffPeriod:      sw.cutOffPeriod,
+		NumWorkers:        sw.numWorkersPerSender,
+		QueueSize:         sw.queueSizePerSender,
+		MetricsRegistry:   sw.metricsRegistry,
+		DeliveryRetries:   sw.deliveryRetries,
+		DeliveryInterval:  sw.deliveryInterval,
+		Logger:            sw.logger,
+		CustomPIDs:        sw.customPIDs,
+		DisablePartnerIDs: sw.disablePartnerIDs,
+		QueryLatency:      sw.queryLatency,
+		AwsSqsEnabled:     sw.awsSqsEnabled,
+		AwsRegion:         sw.awsRegion,
+		RoleBasedAccess:   sw.roleBasedAccess,
+		AccessKey:         sw.accessKey,
+		SecretKey:         sw.secretKey,
+		FifoBasedQueue:    sw.fifoBasedQueue,
+		KmsEnabled:        sw.kmsEnabled,
+		KmsKeyARN:         sw.kmsKeyARN,
 	}
 
 	ids := make([]struct {

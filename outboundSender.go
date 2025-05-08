@@ -125,14 +125,20 @@ type OutboundSenderFactory struct {
 	// If RoleBasedAccess is enabled, accessKey and secretKey will be fetched using IAM temporary credentials
 	RoleBasedAccess bool
 
-	// AccessKey is the AWS accessKey to access dynamodb.
+	// AccessKey is the AWS accessKey to access dynamodb
 	AccessKey string
 
-	// SecretKey is the AWS secretKey to go with the accessKey to access dynamodb.
+	// SecretKey is the AWS secretKey to go with the accessKey to access dynamodb
 	SecretKey string
 
-	// SqsAccountEndpoint is the endpoint for AWS SQS account
-	SqsAccountEndpoint string
+	// FifoBasedQueue is a type of AWS SQS Queue. If not enabled, standard queue will be created
+	FifoBasedQueue bool
+
+	// If KmsEnabled is true, then KMS will be used for encryption in AWS SQS Queue.
+	KmsEnabled bool
+
+	// Only required if KmsEnabled is enabled. KmsKeyARN will identify the ARN which will be used for encryption in AWS SQS Queue.
+	KmsKeyARN string
 }
 
 type OutboundSender interface {
@@ -185,6 +191,7 @@ type CaduceusOutboundSender struct {
 	clientMiddleware                 func(httpClient) httpClient
 	sqsClient                        *sqs.SQS
 	sqsQueueURL                      string
+	fifoBasedQueue                   bool
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -264,45 +271,12 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		}
 		fmt.Println("Successfully created a new session with SQS client")
 
-		sqsClient := sqs.New(sess)
-		queueName := osf.Listener.Webhook.CaduceusQueueName
-		if !strings.HasSuffix(queueName, ".fifo") {
-			queueName += ".fifo"
-		}
-		fmt.Println("AWS SQS queue name: ", queueName)
-
-		getQueueOutput, err := sqsClient.GetQueueUrl(&sqs.GetQueueUrlInput{
-			QueueName: aws.String(queueName),
-		})
+		caduceusOutboundSender.sqsClient = sqs.New(sess)
+		caduceusOutboundSender.sqsQueueURL, err = osf.initializeQueue(caduceusOutboundSender.sqsClient)
+		caduceusOutboundSender.fifoBasedQueue = osf.FifoBasedQueue
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok && aerr.Code() == sqs.ErrCodeQueueDoesNotExist {
-				fmt.Println("Queue in AWS SQS does not exists: ", caduceusOutboundSender.sqsQueueURL)
-				createQueueInput := &sqs.CreateQueueInput{
-					QueueName: aws.String(queueName),
-					Attributes: map[string]*string{
-						"FifoQueue":                 aws.String("true"),
-						"ContentBasedDeduplication": aws.String("true"),
-						"KmsMasterKeyId":            aws.String("arn:aws:kms:eu-central-1:921772479357:key/4c5e649f-de27-4329-97fd-eb9e47063aaa"),
-					},
-				}
-
-				createQueueOutput, err := sqsClient.CreateQueue(createQueueInput)
-				if err != nil {
-					fmt.Println("failed to create queue in AWS SQS:", err)
-					return nil, fmt.Errorf("failed to create queue in AWS SQS: %w", err)
-				}
-				caduceusOutboundSender.sqsQueueURL = *createQueueOutput.QueueUrl
-				fmt.Println("Successfully created FIFO queue in AWS SQS: ", caduceusOutboundSender.sqsQueueURL)
-			} else {
-				return nil, fmt.Errorf("failed to get queue URL from AWS SQS: %w", err)
-			}
-		} else {
-			caduceusOutboundSender.sqsQueueURL = *getQueueOutput.QueueUrl
-			fmt.Println("Queue in AWS SQS already exists: ", caduceusOutboundSender.sqsQueueURL)
+			return nil, err
 		}
-
-		caduceusOutboundSender.sqsClient = sqsClient
-		fmt.Println("This is the AWS SQS queue URL: ", caduceusOutboundSender.sqsQueueURL)
 	}
 
 	// Don't share the secret with others when there is an error.
@@ -327,6 +301,56 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 	obs = caduceusOutboundSender
 
 	return
+}
+
+func (osf OutboundSenderFactory) getQueueName() string {
+	queueName := osf.Listener.Webhook.CaduceusQueueName
+	if osf.FifoBasedQueue && !strings.HasSuffix(queueName, ".fifo") {
+		queueName += ".fifo"
+	}
+	fmt.Println("AWS SQS queue name: ", queueName)
+	return queueName
+}
+
+func (osf OutboundSenderFactory) initializeQueue(sqsClient *sqs.SQS) (string, error) {
+	queueName := osf.getQueueName()
+
+	getQueueOutput, err := sqsClient.GetQueueUrl(&sqs.GetQueueUrlInput{
+		QueueName: aws.String(queueName),
+	})
+
+	if err == nil {
+		fmt.Println("Queue already exists in AWS SQS:", *getQueueOutput.QueueUrl)
+		return *getQueueOutput.QueueUrl, nil
+	}
+
+	if aerr, ok := err.(awserr.Error); ok && aerr.Code() == sqs.ErrCodeQueueDoesNotExist {
+		fmt.Println("Queue does not exist. Creating new queue...")
+
+		attrs := map[string]*string{}
+
+		if osf.FifoBasedQueue {
+			attrs["FifoQueue"] = aws.String("true")
+			attrs["ContentBasedDeduplication"] = aws.String("true")
+		}
+		if osf.KmsEnabled && osf.KmsKeyARN != "" {
+			attrs["KmsMasterKeyId"] = aws.String(osf.KmsKeyARN)
+		}
+
+		createQueueOutput, err := sqsClient.CreateQueue(&sqs.CreateQueueInput{
+			QueueName:  aws.String(queueName),
+			Attributes: attrs,
+		})
+		if err != nil {
+			return "", fmt.Errorf("failed to create queue: %w", err)
+		}
+
+		fmt.Println("Successfully created queue:", *createQueueOutput.QueueUrl)
+		return *createQueueOutput.QueueUrl, nil
+	}
+
+	fmt.Println("failed to get queue URL from AWS SQS: ", err)
+	return "", fmt.Errorf("failed to get queue URL from AWS SQS: %w", err)
 }
 
 func (osf OutboundSenderFactory) getAwsRegionForAwsSqs() (string, error) {
@@ -571,11 +595,14 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			return
 		}
 
-		_, err = obs.sqsClient.SendMessage(&sqs.SendMessageInput{
-			QueueUrl:       aws.String(obs.sqsQueueURL),
-			MessageBody:    aws.String(string(msgBytes)),
-			MessageGroupId: aws.String("caduceus-uat"),
-		})
+		input := &sqs.SendMessageInput{
+			QueueUrl:    aws.String(obs.sqsQueueURL),
+			MessageBody: aws.String(string(msgBytes)),
+		}
+		if obs.fifoBasedQueue {
+			input.MessageGroupId = aws.String("caduceus")
+		}
+		_, err = obs.sqsClient.SendMessage(input)
 		if err != nil {
 			fmt.Println("error while sending msg to AWS SQS: ", err)
 			level.Info(obs.logger).Log(

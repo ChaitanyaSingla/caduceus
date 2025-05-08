@@ -58,7 +58,9 @@ type SenderConfig struct {
 	RoleBasedAccess                 bool
 	AccessKey                       string
 	SecretKey                       string
-	SqsAccountEndpoint              string
+	FifoBasedQueue                  bool
+	KmsEnabled                      bool
+	KmsKeyARN                       string
 }
 
 type CaduceusMetricsRegistry interface {
