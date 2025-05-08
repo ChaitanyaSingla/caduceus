@@ -289,6 +289,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 
 				createQueueOutput, err := sqsClient.CreateQueue(createQueueInput)
 				if err != nil {
+					fmt.Println("failed to create queue in AWS SQS:", err)
 					return nil, fmt.Errorf("failed to create queue in AWS SQS: %w", err)
 				}
 				caduceusOutboundSender.sqsQueueURL = *createQueueOutput.QueueUrl
