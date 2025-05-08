@@ -344,6 +344,7 @@ func (osf OutboundSenderFactory) initializeQueue(sqsClient *sqs.SQS) (string, er
 			Attributes: attrs,
 		})
 		if err != nil {
+			fmt.Println("failed to create queue: ", err)
 			return "", fmt.Errorf("failed to create queue: %w", err)
 		}
 
