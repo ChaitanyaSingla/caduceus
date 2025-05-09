@@ -598,6 +598,7 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			return
 		}
 
+		fmt.Println("Sending message to queue: ", obs.sqsQueueURL)
 		input := &sqs.SendMessageInput{
 			QueueUrl:    aws.String(obs.sqsQueueURL),
 			MessageBody: aws.String(string(msgBytes)),
@@ -680,6 +681,7 @@ func (obs *CaduceusOutboundSender) dispatcher() {
 Loop:
 	for {
 		if obs.sqsClient != nil {
+			fmt.Println("Receiving message from queue: ", obs.sqsQueueURL)
 			consumedMessage, err := obs.sqsClient.ReceiveMessage(&sqs.ReceiveMessageInput{
 				QueueUrl:            aws.String(obs.sqsQueueURL),
 				MaxNumberOfMessages: aws.Int64(1),
@@ -703,6 +705,7 @@ Loop:
 			fmt.Println("Successfully received message from AWS SQS: ", msg)
 			obs.sendMessage(msg)
 
+			fmt.Println("Deleting message from queue: ", obs.sqsQueueURL)
 			_, err = obs.sqsClient.DeleteMessage(&sqs.DeleteMessageInput{
 				QueueUrl:      aws.String(obs.sqsQueueURL),
 				ReceiptHandle: sqsMsg.ReceiptHandle,
