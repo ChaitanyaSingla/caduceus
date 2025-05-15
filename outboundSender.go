@@ -246,6 +246,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		clientMiddleware:  osf.ClientMiddleware,
 	}
 
+	fmt.Println("AWS SQS Enabled: ", osf.AwsSqsEnabled)
 	if osf.AwsSqsEnabled {
 		awsRegion, err := osf.getAwsRegionForAwsSqs()
 		if err != nil {
