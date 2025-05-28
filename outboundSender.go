@@ -192,6 +192,7 @@ type CaduceusOutboundSender struct {
 	sqsClient                        *sqs.SQS
 	sqsQueueURL                      string
 	fifoBasedQueue                   bool
+	sendMsgToSqsCounter              metrics.Gauge
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -624,6 +625,7 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 		}
 
 		fmt.Println("Successfully sent message to AWS SQS: ", msg)
+		obs.sendMsgToSqsCounter.Add(1.0)
 		level.Info(obs.logger).Log(
 			logging.MessageKey(), "event added to outbound queue using AWS SQS",
 			"event.source", msg.Source,
