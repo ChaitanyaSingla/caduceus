@@ -110,12 +110,13 @@ func (sh *ServerHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	fmt.Println("This is the payload received for decoding: ", payload)
 	err = decoder.Decode(msg)
 	if err != nil || msg.MessageType() != 4 {
+		fmt.Println("This is the error in payload: ", err)
+		fmt.Println("This is the message: ", msg)
 		// return a 400
 		sh.invalidCount.Add(1.0)
 		response.WriteHeader(http.StatusBadRequest)
 		if err != nil {
 			response.Write([]byte("Invalid payload format.\n"))
-			fmt.Println("This is the error in payload", err)
 			debugLog.Log(messageKey, "Invalid payload format.")
 		} else {
 			response.Write([]byte("Invalid MessageType.\n"))
