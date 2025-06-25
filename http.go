@@ -107,6 +107,7 @@ func (sh *ServerHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	decoder := wrp.NewDecoderBytes(payload, wrp.Msgpack)
 	msg := new(wrp.Message)
 
+	fmt.Println("This is the payload received for decoding")
 	err = decoder.Decode(msg)
 	if err != nil || msg.MessageType() != 4 {
 		// return a 400
