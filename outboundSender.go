@@ -723,6 +723,7 @@ Loop:
 				}
 
 				fmt.Println("Successfully received message from AWS SQS: ", msg)
+				level.Info(obs.logger).Log(logging.MessageKey(), "Successfully received message from AWS SQS")
 				obs.receivedMsgFromSqsCounter.With("url", obs.id, "source", msg.Source).Add(1.0)
 				obs.sendMessage(msg)
 
@@ -737,6 +738,7 @@ Loop:
 					obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Failed to delete AWS SQS message", logging.ErrorKey(), err)
 				}
 				fmt.Println("Successfully deleted message from AWS SQS: ", msg)
+				level.Info(obs.logger).Log(logging.MessageKey(), "Successfully deleted message from AWS SQS")
 			}
 		} else {
 			// Always pull a new queue in case we have been cutoff or are shutting
