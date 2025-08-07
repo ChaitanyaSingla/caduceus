@@ -878,25 +878,27 @@ func (obs *CaduceusOutboundSender) send(urls *ring.Ring, secret, acceptType stri
 
 	retryOptions := xhttp.RetryOptions{
 		Logger:   obs.logger,
-		Retries:  obs.deliveryRetries,
-		Interval: obs.deliveryInterval,
+		Retries:  3,
+		Interval: 10 * time.Millisecond,
 		Counter:  obs.deliveryRetryCounter.With("url", obs.id, "event", event),
 		// Always retry on failures up to the max count.
-		ShouldRetry:       xhttp.ShouldRetry,
-		ShouldRetryStatus: xhttp.RetryCodes,
+		ShouldRetry: xhttp.ShouldRetry,
+		ShouldRetryStatus: func(statusCode int) bool {
+			return statusCode < 200 || statusCode >= 300
+		},
 	}
 
-	// update subsequent requests with the next url in the list upon failure
-	retryOptions.UpdateRequest = func(request *http.Request) {
-		urls = urls.Next()
-		tmp, err := url.Parse(urls.Value.(string))
-		if err != nil {
-			obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "failed to update url",
-				"url", urls.Value.(string), logging.ErrorKey(), err)
-			return
-		}
-		request.URL = tmp
-	}
+	// // update subsequent requests with the next url in the list upon failure
+	// retryOptions.UpdateRequest = func(request *http.Request) {
+	// 	urls = urls.Next()
+	// 	tmp, err := url.Parse(urls.Value.(string))
+	// 	if err != nil {
+	// 		obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "failed to update url",
+	// 			"url", urls.Value.(string), logging.ErrorKey(), err)
+	// 		return
+	// 	}
+	// 	request.URL = tmp
+	// }
 
 	// Send it
 	level.Debug(obs.logger).Log(
@@ -908,32 +910,7 @@ func (obs *CaduceusOutboundSender) send(urls *ring.Ring, secret, acceptType stri
 	retryer := xhttp.RetryTransactor(retryOptions, obs.sender.Do)
 	client := obs.clientMiddleware(doerFunc(retryer))
 
-	maxRetries := 3
-	originalURL := req.URL
-	var resp *http.Response
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		resp, err = client.Do(req)
-
-		if err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			break // success, no need to retry
-		}
-
-		obs.logger.Log(level.Key(), level.InfoValue(), logging.MessageKey(), "Retrying request due to failure", "attempt", attempt, "url", originalURL.String(),
-			"status", func() interface{} {
-				if resp != nil {
-					return resp.StatusCode
-				}
-				return "network error"
-			}(),
-			logging.ErrorKey(), err,
-		)
-
-		if attempt < maxRetries {
-			time.Sleep(10 * time.Millisecond)
-			req.URL = originalURL
-		}
-	}
+	resp, err := client.Do(req)
 
 	code := "failure"
 	l := obs.logger
