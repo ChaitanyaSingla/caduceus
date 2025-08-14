@@ -669,6 +669,8 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 
 		// Flush immediately if batch limit reached
 		if len(obs.sqsBatch) >= 10 {
+			fmt.Println("Size of batch is: ", len(obs.sqsBatch))
+			level.Info(obs.logger).Log("Size of batch is: ", len(obs.sqsBatch))
 			go obs.flushSqsBatch()
 		}
 		return
