@@ -198,8 +198,8 @@ type CaduceusOutboundSender struct {
 	failedReceivedMsgsCount          metrics.Counter
 	failedDeletedMessagesCount       metrics.Counter
 	sqsBatch                         []*sqs.SendMessageBatchRequestEntry
-	sqsBatchMutex                    sync.Mutex
-	sqsBatchTicker                   *time.Ticker
+	// sqsBatchMutex                    sync.Mutex
+	// sqsBatchTicker                   *time.Ticker
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -654,8 +654,8 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			return
 		}
 
-		obs.sqsBatchMutex.Lock()
-		defer obs.sqsBatchMutex.Unlock()
+		// obs.sqsBatchMutex.Lock()
+		// defer obs.sqsBatchMutex.Unlock()
 
 		entry := &sqs.SendMessageBatchRequestEntry{
 			Id:          aws.String(fmt.Sprintf("%d", time.Now().UnixNano())),
