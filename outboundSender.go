@@ -329,8 +329,8 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 	})
 	if err != nil {
 		fmt.Println("Error while sending SQS batch:", err)
-		for _, entry := range obs.sqsBatch {
-			obs.failedSentMsgsCount.With("url", obs.id, "source", *entry.Id).Add(1.0)
+		for _, _ = range obs.sqsBatch {
+			obs.failedSentMsgsCount.With("url", obs.id, "source", "sqsBatch").Add(1.0)
 		}
 		obs.sqsBatch = nil
 		obs.sqsBatchMutex.Unlock()
@@ -338,8 +338,8 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 	}
 
 	fmt.Printf("Successfully sent SQS batch of %d messages\n", len(obs.sqsBatch))
-	for _, entry := range obs.sqsBatch {
-		obs.sendMsgToSqsCounter.With("url", obs.id, "source", *entry.Id).Add(1.0)
+	for _, _ = range obs.sqsBatch {
+		obs.sendMsgToSqsCounter.With("url", obs.id, "source", "sqsBatch").Add(1.0)
 	}
 	obs.sqsBatch = nil
 	obs.sqsBatchMutex.Unlock()
