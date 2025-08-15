@@ -256,12 +256,12 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 
 	fmt.Println("AWS SQS Enabled: ", osf.AwsSqsEnabled)
 	if osf.AwsSqsEnabled {
-		caduceusOutboundSender.sqsBatchTicker = time.NewTicker(200 * time.Millisecond)
-		go func() {
-			for range caduceusOutboundSender.sqsBatchTicker.C {
-				caduceusOutboundSender.flushSqsBatch()
-			}
-		}()
+		// caduceusOutboundSender.sqsBatchTicker = time.NewTicker(200 * time.Millisecond)
+		// go func() {
+		// 	for range caduceusOutboundSender.sqsBatchTicker.C {
+		// 		caduceusOutboundSender.flushSqsBatch()
+		// 	}
+		// }()
 		awsRegion, err := osf.getAwsRegionForAwsSqs()
 		if err != nil {
 			return nil, err
