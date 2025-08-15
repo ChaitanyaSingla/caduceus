@@ -148,6 +148,8 @@ type OutboundSender interface {
 	Queue(*wrp.Message)
 }
 
+var sqsBatch []*sqs.SendMessageBatchRequestEntry
+
 // CaduceusOutboundSender is the outbound sender object.
 type CaduceusOutboundSender struct {
 	id                               string
@@ -197,7 +199,7 @@ type CaduceusOutboundSender struct {
 	failedSentMsgsCount              metrics.Counter
 	failedReceivedMsgsCount          metrics.Counter
 	failedDeletedMessagesCount       metrics.Counter
-	sqsBatch                         []*sqs.SendMessageBatchRequestEntry
+	// sqsBatch                         []*sqs.SendMessageBatchRequestEntry
 	// sqsBatchMutex                    sync.Mutex
 	// sqsBatchTicker                   *time.Ticker
 }
@@ -322,29 +324,31 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 	// obs.sqsBatchMutex.Lock()
 	// defer obs.sqsBatchMutex.Unlock()
 
-	if len(obs.sqsBatch) == 0 {
+	if len(sqsBatch) == 0 {
 		return
 	}
 
-	batch := obs.sqsBatch
-	obs.sqsBatch = nil
+	// batch := obs.sqsBatch
+	// obs.sqsBatch = nil
 
 	_, err := obs.sqsClient.SendMessageBatch(&sqs.SendMessageBatchInput{
 		QueueUrl: aws.String(obs.sqsQueueURL),
-		Entries:  batch,
+		Entries:  sqsBatch,
 	})
 	if err != nil {
 		fmt.Println("Error while sending SQS batch:", err)
-		for _, entry := range batch {
+		for _, entry := range sqsBatch {
 			obs.failedSentMsgsCount.With("url", obs.id, "source", *entry.Id).Add(1.0)
 		}
+		sqsBatch = nil
 		return
 	}
 
-	fmt.Printf("Successfully sent SQS batch of %d messages\n", len(batch))
-	for _, entry := range batch {
+	fmt.Printf("Successfully sent SQS batch of %d messages\n", len(sqsBatch))
+	for _, entry := range sqsBatch {
 		obs.sendMsgToSqsCounter.With("url", obs.id, "source", *entry.Id).Add(1.0)
 	}
+	sqsBatch = nil
 }
 
 func (osf OutboundSenderFactory) getQueueName() string {
@@ -665,12 +669,11 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			entry.MessageGroupId = aws.String(msg.Metadata["/hw-deviceid"])
 		}
 
-		obs.sqsBatch = append(obs.sqsBatch, entry)
+		sqsBatch = append(sqsBatch, entry)
 
-		// Flush immediately if batch limit reached
-		if len(obs.sqsBatch) >= 10 {
-			fmt.Println("Size of batch is: ", len(obs.sqsBatch))
-			level.Info(obs.logger).Log("Size of batch is: ", len(obs.sqsBatch))
+		if len(sqsBatch) >= 10 {
+			fmt.Println("Size of batch is: ", len(sqsBatch))
+			level.Info(obs.logger).Log("Size of batch is: ", len(sqsBatch))
 			obs.flushSqsBatch()
 		}
 		return
