@@ -295,6 +295,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		caduceusOutboundSender.sqsBatchTicker = time.NewTicker(caduceusOutboundSender.flushInterval)
 		go func() {
 			for range caduceusOutboundSender.sqsBatchTicker.C {
+				caduceusOutboundSender.sqsBatchMutex.Lock()
 				caduceusOutboundSender.flushSqsBatch()
 			}
 		}()
