@@ -297,12 +297,12 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 
 		fmt.Println("Starting ticket to flush sqs batch with flush interval as: ", caduceusOutboundSender.flushInterval.Seconds())
 		caduceusOutboundSender.sqsBatchTicker = time.NewTicker(caduceusOutboundSender.flushInterval)
-		go func() {
-			for range caduceusOutboundSender.sqsBatchTicker.C {
-				caduceusOutboundSender.sqsBatchMutex.Lock()
-				caduceusOutboundSender.flushSqsBatch()
-			}
-		}()
+		// go func() {
+		// 	for range caduceusOutboundSender.sqsBatchTicker.C {
+		// 		caduceusOutboundSender.sqsBatchMutex.Lock()
+		// 		caduceusOutboundSender.flushSqsBatch()
+		// 	}
+		// }()
 	}
 
 	// Don't share the secret with others when there is an error.
