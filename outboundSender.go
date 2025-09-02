@@ -554,9 +554,9 @@ func (obs *CaduceusOutboundSender) Shutdown(gentle bool) {
 	obs.queueDepthGauge.Set(0) //just in case
 	if obs.sqsClient != nil {
 		obs.flushSqsBatch()
-		// if obs.sqsBatchTicker != nil {
-		// 	obs.sqsBatchTicker.Stop()
-		// }
+		if obs.sqsBatchTicker != nil {
+			obs.sqsBatchTicker.Stop()
+		}
 	}
 	obs.mutex.Unlock()
 }
@@ -673,12 +673,13 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 		}
 
 		obs.sqsBatch = append(obs.sqsBatch, entry)
+		shouldFlush := len(obs.sqsBatch) >= 10
 		obs.sqsBatchMutex.Unlock()
 
-		if len(obs.sqsBatch) >= 10 {
+		if shouldFlush {
 			fmt.Println("Size of batch is: ", len(obs.sqsBatch))
 			level.Info(obs.logger).Log("Size of batch is: ", len(obs.sqsBatch))
-			obs.flushSqsBatch() // This will unlock the mutex inside flushSqsBatch
+			obs.flushSqsBatch()
 		}
 		return
 	} else {
