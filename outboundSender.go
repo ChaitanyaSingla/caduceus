@@ -286,23 +286,23 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		caduceusOutboundSender.sqsClient = sqs.New(sess)
 		caduceusOutboundSender.sqsQueueURL, err = osf.initializeQueue(caduceusOutboundSender.sqsClient)
 		caduceusOutboundSender.fifoBasedQueue = osf.FifoBasedQueue
-		// if osf.FlushInterval <= 0 {
-		// 	caduceusOutboundSender.flushInterval = 5 * time.Second
-		// } else {
-		// 	caduceusOutboundSender.flushInterval = osf.FlushInterval
-		// }
-		// if err != nil {
-		// 	return nil, err
-		// }
+		if err != nil {
+			return nil, err
+		}
 
-		// fmt.Println("Starting ticket to flush sqs batch with flush interval as: ", caduceusOutboundSender.flushInterval.Seconds())
-		// caduceusOutboundSender.sqsBatchTicker = time.NewTicker(caduceusOutboundSender.flushInterval)
-		// go func() {
-		// 	for range caduceusOutboundSender.sqsBatchTicker.C {
-		// 		caduceusOutboundSender.sqsBatchMutex.Lock()
-		// 		caduceusOutboundSender.flushSqsBatch()
-		// 	}
-		// }()
+		if osf.FlushInterval <= 0 {
+			caduceusOutboundSender.flushInterval = 5 * time.Second
+		} else {
+			caduceusOutboundSender.flushInterval = osf.FlushInterval
+		}
+		fmt.Println("Starting ticket to flush sqs batch with flush interval as: ", caduceusOutboundSender.flushInterval.Seconds())
+		caduceusOutboundSender.sqsBatchTicker = time.NewTicker(caduceusOutboundSender.flushInterval)
+		go func() {
+			for range caduceusOutboundSender.sqsBatchTicker.C {
+				caduceusOutboundSender.sqsBatchMutex.Lock()
+				caduceusOutboundSender.flushSqsBatch()
+			}
+		}()
 	}
 
 	// Don't share the secret with others when there is an error.
@@ -332,6 +332,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 func (obs *CaduceusOutboundSender) flushSqsBatch() {
 	// Note: This method assumes the caller already holds the sqsBatchMutex
 	if len(obs.sqsBatch) == 0 {
+		fmt.Println("Batch size is 0, hence doing nothing")
 		return
 	}
 
