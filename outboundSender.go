@@ -672,7 +672,7 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 		}
 
 		entry := &sqs.SendMessageBatchRequestEntry{
-			Id:          aws.String(fmt.Sprintf("%d", time.Now().UnixNano())),
+			Id:          aws.String(randomID()),
 			MessageBody: aws.String(string(msgBytes)),
 		}
 		if obs.fifoBasedQueue {
@@ -707,6 +707,14 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			obs.droppedQueueFullCounter.Add(1.0)
 		}
 	}
+}
+
+func randomID() string {
+	b := make([]byte, 8) // 8 bytes = 16 hex chars
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano()) // fallback
+	}
+	return hex.EncodeToString(b)
 }
 
 func (obs *CaduceusOutboundSender) isValidTimeWindow(now, dropUntil, deliverUntil time.Time) bool {
