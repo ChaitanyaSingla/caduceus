@@ -286,7 +286,11 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		caduceusOutboundSender.sqsClient = sqs.New(sess)
 		caduceusOutboundSender.sqsQueueURL, err = osf.initializeQueue(caduceusOutboundSender.sqsClient)
 		caduceusOutboundSender.fifoBasedQueue = osf.FifoBasedQueue
-		caduceusOutboundSender.flushInterval = osf.FlushInterval
+		if osf.FlushInterval <= 0 {
+			caduceusOutboundSender.flushInterval = 5 * time.Second
+		} else {
+			caduceusOutboundSender.flushInterval = osf.FlushInterval
+		}
 		if err != nil {
 			return nil, err
 		}
