@@ -299,7 +299,6 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		caduceusOutboundSender.sqsBatchTicker = time.NewTicker(caduceusOutboundSender.flushInterval)
 		go func() {
 			for range caduceusOutboundSender.sqsBatchTicker.C {
-				caduceusOutboundSender.sqsBatchMutex.Lock()
 				caduceusOutboundSender.flushSqsBatch()
 			}
 		}()
@@ -330,6 +329,9 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 }
 
 func (obs *CaduceusOutboundSender) flushSqsBatch() {
+	obs.sqsBatchMutex.Lock()
+	defer obs.sqsBatchMutex.Unlock()
+
 	// Note: This method assumes the caller already holds the sqsBatchMutex
 	if len(obs.sqsBatch) == 0 {
 		fmt.Println("Batch size is 0, hence doing nothing")
@@ -342,20 +344,18 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 	})
 	if err != nil {
 		fmt.Println("Error while sending SQS batch:", err)
-		for _, _ = range obs.sqsBatch {
+		for range obs.sqsBatch {
 			obs.failedSentMsgsCount.With("url", obs.id, "source", "sqsBatch").Add(1.0)
 		}
 		obs.sqsBatch = nil
-		obs.sqsBatchMutex.Unlock()
 		return
 	}
 
 	fmt.Printf("Successfully sent SQS batch of %d messages\n", len(obs.sqsBatch))
-	for _, _ = range obs.sqsBatch {
+	for range obs.sqsBatch {
 		obs.sendMsgToSqsCounter.With("url", obs.id, "source", "sqsBatch").Add(1.0)
 	}
 	obs.sqsBatch = nil
-	obs.sqsBatchMutex.Unlock()
 }
 
 func (osf OutboundSenderFactory) getQueueName() string {
@@ -554,9 +554,7 @@ func (obs *CaduceusOutboundSender) Shutdown(gentle bool) {
 	obs.deliverUntilGauge.Set(float64(obs.deliverUntil.Unix()))
 	obs.queueDepthGauge.Set(0) //just in case
 	if obs.sqsClient != nil {
-		obs.sqsBatchMutex.Lock()
 		obs.flushSqsBatch()
-		obs.sqsBatchMutex.Unlock()
 		// if obs.sqsBatchTicker != nil {
 		// 	obs.sqsBatchTicker.Stop()
 		// }
@@ -676,13 +674,12 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 		}
 
 		obs.sqsBatch = append(obs.sqsBatch, entry)
+		obs.sqsBatchMutex.Unlock()
 
 		if len(obs.sqsBatch) >= 10 {
 			fmt.Println("Size of batch is: ", len(obs.sqsBatch))
 			level.Info(obs.logger).Log("Size of batch is: ", len(obs.sqsBatch))
 			obs.flushSqsBatch() // This will unlock the mutex inside flushSqsBatch
-		} else {
-			obs.sqsBatchMutex.Unlock()
 		}
 		return
 	} else {
