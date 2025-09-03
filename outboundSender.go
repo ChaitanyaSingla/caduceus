@@ -676,7 +676,11 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			MessageBody: aws.String(string(msgBytes)),
 		}
 		if obs.fifoBasedQueue {
-			entry.MessageGroupId = aws.String(msg.Metadata["/hw-deviceid"])
+			messageGroupId := msg.Metadata["/hw-deviceid"]
+			if len(messageGroupId) == 0 {
+				messageGroupId = msg.Metadata["hw-mac"]
+			}
+			entry.MessageGroupId = aws.String(messageGroupId)
 		}
 
 		obs.sqsBatchMutex.Lock()
