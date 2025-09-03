@@ -770,6 +770,8 @@ Loop:
 				continue
 			}
 
+			fmt.Printf("Received batch of %d messages from AWS SQS\n", len(consumedMessage.Messages))
+			level.Info(obs.logger).Log(logging.MessageKey(), "Received messages batch from AWS SQS", "count", len(consumedMessage.Messages))
 			for _, sqsMsg := range consumedMessage.Messages {
 				msg = &wrp.Message{}
 				err = json.Unmarshal([]byte(*sqsMsg.Body), msg)
