@@ -323,7 +323,7 @@ webhook:
     # (Optional)
     listen:
       # pullInterval provides how often the current webhooks list gets refreshed.
-      pullInterval: 5s
+      pullInterval: 6h
 
     # bucket is the partition name where webhooks will be stored.
     bucket: "webhooks"
@@ -416,7 +416,7 @@ sender:
 
   # disablePartnerIDs dictates whether or not to enforce the partnerID check
   # Defaults to 'false'.
-  disablePartnerIDs: false
+  disablePartnerIDs: true
 
   # awsSqs configuration is required to enable AWS SQS support.
   awsSqs:
@@ -445,6 +445,12 @@ sender:
     kmsKeyARN: ""
 
     flushInterval: 10s
+  
+  kafka:
+    kafkaEnabled: true
+    kafkaBrokers: localhost:9092
+    kafkaTopic: caduceus-local
+    kafkaGroupID: groupId
 
 # (Deprecated)
 # profilerFrequency: 15

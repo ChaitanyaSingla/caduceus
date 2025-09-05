@@ -43,6 +43,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/kit/metrics"
@@ -141,6 +142,14 @@ type OutboundSenderFactory struct {
 	KmsKeyARN string
 
 	FlushInterval time.Duration
+
+	KafkaEnabled bool
+
+	KafkaBrokers string
+
+	KafkaTopic string
+
+	KafkaGroupID string
 }
 
 type OutboundSender interface {
@@ -203,6 +212,9 @@ type CaduceusOutboundSender struct {
 	sqsBatchMutex                    sync.Mutex
 	sqsBatchTicker                   *time.Ticker
 	flushInterval                    time.Duration
+	kafkaProducer                    *kafka.Producer
+	kafkaConsumer                    *kafka.Consumer
+	kafkaTopic                       string
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -257,7 +269,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		clientMiddleware:  osf.ClientMiddleware,
 	}
 
-	fmt.Println("AWS SQS Enabled: ", osf.AwsSqsEnabled)
+	fmt.Println("AWS SQS Enabled: ", osf.AwsSqsEnabled, " and Kafka Enabled:", osf.KafkaEnabled)
 	if osf.AwsSqsEnabled {
 		awsRegion, err := osf.getAwsRegionForAwsSqs()
 		if err != nil {
@@ -302,6 +314,35 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 				caduceusOutboundSender.flushSqsBatch()
 			}
 		}()
+	} else if osf.KafkaEnabled {
+		fmt.Println("Kafka Enabled with brokers:", osf.KafkaBrokers)
+		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Kafka Enabled with brokers:", osf.KafkaBrokers)
+
+		// Producer
+		producer, err := kafka.NewProducer(&kafka.ConfigMap{
+			"bootstrap.servers": osf.KafkaBrokers,
+		})
+		if err != nil {
+			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create Kafka producer:", err.Error())
+			return nil, fmt.Errorf("failed to create Kafka producer: %w", err)
+		}
+
+		// Consumer
+		consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
+			"bootstrap.servers": osf.KafkaBrokers,
+			"group.id":          osf.KafkaGroupID,
+			"auto.offset.reset": "earliest",
+		})
+		if err != nil {
+			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create Kafka consumer:", err.Error())
+			return nil, fmt.Errorf("failed to create Kafka consumer: %w", err)
+		}
+
+		consumer.Subscribe(osf.KafkaTopic, nil)
+
+		caduceusOutboundSender.kafkaProducer = producer
+		caduceusOutboundSender.kafkaConsumer = consumer
+		caduceusOutboundSender.kafkaTopic = osf.KafkaTopic
 	}
 
 	// Don't share the secret with others when there is an error.
@@ -566,6 +607,12 @@ func (obs *CaduceusOutboundSender) Shutdown(gentle bool) {
 			obs.sqsBatchTicker.Stop()
 		}
 	}
+	if obs.kafkaProducer != nil {
+		obs.kafkaProducer.Close()
+	}
+	if obs.kafkaConsumer != nil {
+		obs.kafkaConsumer.Close()
+	}
 	obs.mutex.Unlock()
 }
 
@@ -692,6 +739,23 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			obs.flushSqsBatch()
 		}
 		return
+	} else if obs.kafkaProducer != nil {
+		msgBytes, err := json.Marshal(msg)
+		if err != nil {
+			fmt.Println("error while marshalling msg for Kafka ", err)
+			level.Info(obs.logger).Log(logging.MessageKey(), "error while marshalling msg for Kafka "+err.Error())
+			return
+		}
+
+		err = obs.kafkaProducer.Produce(&kafka.Message{
+			TopicPartition: kafka.TopicPartition{Topic: &obs.kafkaTopic, Partition: kafka.PartitionAny},
+			Value:          msgBytes,
+		}, nil)
+		if err != nil {
+			fmt.Println("Failed to produce Kafka message:", err)
+			level.Info(obs.logger).Log(logging.MessageKey(), "Failed to produce Kafka message: "+err.Error())
+		}
+		return
 	} else {
 		select {
 		case obs.queue.Load().(chan *wrp.Message) <- msg:
@@ -802,6 +866,33 @@ Loop:
 				fmt.Println("Successfully deleted message from AWS SQS: ", msg)
 				level.Info(obs.logger).Log(logging.MessageKey(), "Successfully deleted message from AWS SQS")
 			}
+		} else if obs.kafkaConsumer != nil {
+			kafkaMsg, err := obs.kafkaConsumer.ReadMessage(500 * time.Millisecond)
+			if err != nil {
+				if ke, ok := err.(kafka.Error); ok {
+					if ke.Code() == kafka.ErrTimedOut {
+						// benign timeout, try again
+						continue
+					}
+					fmt.Printf("Kafka consumer error: %v\n", ke)
+					level.Info(obs.logger).Log(logging.MessageKey(), "Kafka consumer error:", ke)
+					continue
+				}
+				fmt.Printf("Kafka consumer unexpected error: %v\n", err)
+				level.Info(obs.logger).Log(logging.MessageKey(), "Kafka consumer unexpected error:", err.Error())
+				continue
+			}
+
+			msg = &wrp.Message{}
+			if err := json.Unmarshal(kafkaMsg.Value, msg); err != nil {
+				fmt.Println("Failed to unmarshal Kafka message:", err)
+				level.Info(obs.logger).Log(logging.MessageKey(), "Failed to unmarshal Kafka message:", err.Error())
+				continue
+			}
+
+			fmt.Println("Received Kafka message:", msg)
+			level.Info(obs.logger).Log(logging.MessageKey(), "Received Kafka message:", msg)
+			obs.sendMessage(msg)
 		} else {
 			// Always pull a new queue in case we have been cutoff or are shutting
 			// down.

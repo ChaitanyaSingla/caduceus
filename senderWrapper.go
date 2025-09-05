@@ -94,6 +94,14 @@ type SenderWrapperFactory struct {
 	KmsKeyARN string
 
 	FlushInterval time.Duration
+
+	KafkaEnabled bool
+
+	KafkaBrokers string
+
+	KafkaTopic string
+
+	KafkaGroupID string
 }
 
 type SenderWrapper interface {
@@ -130,6 +138,10 @@ type CaduceusSenderWrapper struct {
 	kmsEnabled          bool
 	kmsKeyARN           string
 	flushInterval       time.Duration
+	kafkaEnabled        bool
+	kafkaBrokers        string
+	kafkaTopic          string
+	kafkaGroupID        string
 }
 
 // New produces a new SenderWrapper implemented by CaduceusSenderWrapper
@@ -156,6 +168,10 @@ func (swf SenderWrapperFactory) New() (sw SenderWrapper, err error) {
 		kmsEnabled:          swf.KmsEnabled,
 		kmsKeyARN:           swf.KmsKeyARN,
 		flushInterval:       swf.FlushInterval,
+		kafkaEnabled:        swf.KafkaEnabled,
+		kafkaBrokers:        swf.KafkaBrokers,
+		kafkaTopic:          swf.KafkaTopic,
+		kafkaGroupID:        swf.KafkaGroupID,
 	}
 
 	if swf.Linger <= 0 {
@@ -203,6 +219,10 @@ func (sw *CaduceusSenderWrapper) Update(list []ancla.InternalWebhook) {
 		KmsEnabled:        sw.kmsEnabled,
 		KmsKeyARN:         sw.kmsKeyARN,
 		FlushInterval:     sw.flushInterval,
+		KafkaEnabled:      sw.kafkaEnabled,
+		KafkaBrokers:      sw.kafkaBrokers,
+		KafkaTopic:        sw.kafkaTopic,
+		KafkaGroupID:      sw.kafkaGroupID,
 	}
 
 	ids := make([]struct {

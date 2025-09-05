@@ -149,6 +149,10 @@ func caduceus(arguments []string) int {
 		KmsEnabled:        caduceusConfig.Sender.AwsSqs.KmsEnabled,
 		KmsKeyARN:         caduceusConfig.Sender.AwsSqs.KmsKeyARN,
 		FlushInterval:     caduceusConfig.Sender.AwsSqs.FlushInterval,
+		KafkaEnabled:      caduceusConfig.Sender.Kafka.KafkaEnabled,
+		KafkaBrokers:      caduceusConfig.Sender.Kafka.KafkaBrokers,
+		KafkaTopic:        caduceusConfig.Sender.Kafka.KafkaTopic,
+		KafkaGroupID:      caduceusConfig.Sender.Kafka.KafkaGroupID,
 	}.New()
 
 	if err != nil {

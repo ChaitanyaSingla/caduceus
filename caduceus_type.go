@@ -54,6 +54,7 @@ type SenderConfig struct {
 	CustomPIDs                      []string
 	DisablePartnerIDs               bool
 	AwsSqs                          AwsSqs
+	Kafka                           Kafka
 }
 
 type AwsSqs struct {
@@ -66,6 +67,13 @@ type AwsSqs struct {
 	KmsEnabled      bool
 	KmsKeyARN       string
 	FlushInterval   time.Duration
+}
+
+type Kafka struct {
+	KafkaEnabled bool
+	KafkaBrokers string
+	KafkaTopic   string
+	KafkaGroupID string
 }
 
 type CaduceusMetricsRegistry interface {
