@@ -6,31 +6,35 @@ import (
 )
 
 const (
-	ErrorRequestBodyCounter           = "error_request_body_count"
-	EmptyRequestBodyCounter           = "empty_request_body_count"
-	ModifiedWRPCounter                = "modified_wrp_count"
-	DeliveryCounter                   = "delivery_count"
-	DeliveryRetryCounter              = "delivery_retry_count"
-	DeliveryRetryMaxGauge             = "delivery_retry_max"
-	SlowConsumerDroppedMsgCounter     = "slow_consumer_dropped_message_count"
-	SlowConsumerCounter               = "slow_consumer_cut_off_count"
-	IncomingQueueDepth                = "incoming_queue_depth"
-	IncomingEventTypeCounter          = "incoming_event_type_count"
-	DropsDueToInvalidPayload          = "drops_due_to_invalid_payload"
-	OutgoingQueueDepth                = "outgoing_queue_depths"
-	DropsDueToPanic                   = "drops_due_to_panic"
-	ConsumerRenewalTimeGauge          = "consumer_renewal_time"
-	ConsumerDeliverUntilGauge         = "consumer_deliver_until"
-	ConsumerDropUntilGauge            = "consumer_drop_until"
-	ConsumerDeliveryWorkersGauge      = "consumer_delivery_workers"
-	ConsumerMaxDeliveryWorkersGauge   = "consumer_delivery_workers_max"
-	QueryDurationHistogram            = "query_duration_histogram_seconds"
-	IncomingQueueLatencyHistogram     = "incoming_queue_latency_histogram_seconds"
-	MsgSendToSqsCount                 = "msg_send_to_sqs_count"
-	ReceivedMessageFromSqsCount       = "received_msg_from_sqs_count"
-	FailedSendToSqsMessagesCount      = "failed_send_to_sqs_msgs_count"
-	FailedReceiveFromSqsMessagesCount = "failed_receive_from_sqs_msgs_count"
-	FailedDeleteFromSqsMessagesCount  = "failed_delete_from_sqs_msgs_count"
+	ErrorRequestBodyCounter             = "error_request_body_count"
+	EmptyRequestBodyCounter             = "empty_request_body_count"
+	ModifiedWRPCounter                  = "modified_wrp_count"
+	DeliveryCounter                     = "delivery_count"
+	DeliveryRetryCounter                = "delivery_retry_count"
+	DeliveryRetryMaxGauge               = "delivery_retry_max"
+	SlowConsumerDroppedMsgCounter       = "slow_consumer_dropped_message_count"
+	SlowConsumerCounter                 = "slow_consumer_cut_off_count"
+	IncomingQueueDepth                  = "incoming_queue_depth"
+	IncomingEventTypeCounter            = "incoming_event_type_count"
+	DropsDueToInvalidPayload            = "drops_due_to_invalid_payload"
+	OutgoingQueueDepth                  = "outgoing_queue_depths"
+	DropsDueToPanic                     = "drops_due_to_panic"
+	ConsumerRenewalTimeGauge            = "consumer_renewal_time"
+	ConsumerDeliverUntilGauge           = "consumer_deliver_until"
+	ConsumerDropUntilGauge              = "consumer_drop_until"
+	ConsumerDeliveryWorkersGauge        = "consumer_delivery_workers"
+	ConsumerMaxDeliveryWorkersGauge     = "consumer_delivery_workers_max"
+	QueryDurationHistogram              = "query_duration_histogram_seconds"
+	IncomingQueueLatencyHistogram       = "incoming_queue_latency_histogram_seconds"
+	MsgSendToSqsCount                   = "msg_send_to_sqs_count"
+	ReceivedMessageFromSqsCount         = "received_msg_from_sqs_count"
+	FailedSendToSqsMessagesCount        = "failed_send_to_sqs_msgs_count"
+	FailedReceiveFromSqsMessagesCount   = "failed_receive_from_sqs_msgs_count"
+	FailedDeleteFromSqsMessagesCount    = "failed_delete_from_sqs_msgs_count"
+	MsgSendToKafkaCount                 = "msg_send_to_kafka_count"
+	ReceivedMessageFromKafkaCount       = "received_msg_from_kafka_count"
+	FailedSendToKafkaMessagesCount      = "failed_send_to_kafka_msgs_count"
+	FailedReceiveFromKafkaMessagesCount = "failed_receive_from_kafka_msgs_count"
 )
 
 const (
@@ -191,6 +195,30 @@ func Metrics() []xmetrics.Metric {
 			Type:       "counter",
 			LabelNames: []string{"url", "source"},
 		},
+		{
+			Name:       MsgSendToKafkaCount,
+			Help:       "Count of messages delivered to Kafka",
+			Type:       "counter",
+			LabelNames: []string{"url", "source"},
+		},
+		{
+			Name:       ReceivedMessageFromKafkaCount,
+			Help:       "Count of messages received from Kafka",
+			Type:       "counter",
+			LabelNames: []string{"url", "source"},
+		},
+		{
+			Name:       FailedSendToKafkaMessagesCount,
+			Help:       "Count of messages failed to send to Kafka",
+			Type:       "counter",
+			LabelNames: []string{"url", "source"},
+		},
+		{
+			Name:       FailedReceiveFromKafkaMessagesCount,
+			Help:       "Count of messages failed to receive from Kafka",
+			Type:       "counter",
+			LabelNames: []string{"url", "source"},
+		},
 	}
 }
 
@@ -207,6 +235,10 @@ func CreateOutbounderMetrics(m CaduceusMetricsRegistry, c *CaduceusOutboundSende
 	c.failedSendToSqsMsgsCount = m.NewCounter(FailedSendToSqsMessagesCount)
 	c.failedReceiveFromSqsMsgsCount = m.NewCounter(FailedReceiveFromSqsMessagesCount)
 	c.failedDeleteFromSqsMessagesCount = m.NewCounter(FailedDeleteFromSqsMessagesCount)
+	c.sendMsgToKafkaCounter = m.NewCounter(MsgSendToKafkaCount)
+	c.receivedMsgFromKafkaCounter = m.NewCounter(ReceivedMessageFromKafkaCount)
+	c.failedSendToKafkaMsgsCount = m.NewCounter(FailedSendToKafkaMessagesCount)
+	c.failedReceiveFromKafkaMsgsCount = m.NewCounter(FailedReceiveFromKafkaMessagesCount)
 
 	c.droppedCutoffCounter = m.NewCounter(SlowConsumerDroppedMsgCounter).With("url", c.id, "reason", "cut_off")
 	c.droppedInvalidConfig = m.NewCounter(SlowConsumerDroppedMsgCounter).With("url", c.id, "reason", "invalid_config")

@@ -289,6 +289,10 @@ type CaduceusOutboundSender struct {
 	failedSendToSqsMsgsCount         metrics.Counter
 	failedReceiveFromSqsMsgsCount    metrics.Counter
 	failedDeleteFromSqsMessagesCount metrics.Counter
+	sendMsgToKafkaCounter            metrics.Counter
+	receivedMsgFromKafkaCounter      metrics.Counter
+	failedSendToKafkaMsgsCount       metrics.Counter
+	failedReceiveFromKafkaMsgsCount  metrics.Counter
 	sqsBatch                         []*sqs.SendMessageBatchRequestEntry
 	sqsBatchMutex                    sync.Mutex
 	sqsBatchTicker                   *time.Ticker
@@ -1005,9 +1009,11 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 		}, nil)
 
 		if err != nil {
+			obs.failedSendToKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
 			fmt.Println("Failed to produce Kafka message:", err)
 			level.Info(obs.logger).Log(logging.MessageKey(), "Failed to produce Kafka message: "+err.Error())
 		}
+		obs.sendMsgToKafkaCounter.With("url", obs.id, "source", "kafka").Add(1.0)
 		fmt.Println("Successfully published the message to Kafka: ", msg)
 		return
 	} else {
@@ -1125,6 +1131,7 @@ Loop:
 						continue
 					}
 
+					obs.receivedMsgFromKafkaCounter.With("url", obs.id, "source", "kafka").Add(1.0)
 					fmt.Println("Received Kafka message:", msg)
 					level.Info(obs.logger).Log(logging.MessageKey(), "Received Kafka message:", msg)
 					obs.sendMessage(msg) // already uses worker semaphore
@@ -1135,6 +1142,7 @@ Loop:
 						// benign timeout, just ignore
 						continue
 					}
+					obs.failedReceiveFromKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
 					fmt.Printf("Kafka consumer error: %v\n", ev)
 					level.Info(obs.logger).Log(logging.MessageKey(), "Kafka consumer error:", ev.Error())
 
