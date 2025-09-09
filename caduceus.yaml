@@ -451,7 +451,7 @@ sender:
     kafkaEnabled: true
     kafkaBrokers: localhost:9092
     kafkaTopic: caduceus-local
-    kafkaGroupID: groupId
+    kafkaGroupID: caduceus-groupId
 
 # (Deprecated)
 # profilerFrequency: 15
