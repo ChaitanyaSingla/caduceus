@@ -755,6 +755,7 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			fmt.Println("Failed to produce Kafka message:", err)
 			level.Info(obs.logger).Log(logging.MessageKey(), "Failed to produce Kafka message: "+err.Error())
 		}
+		fmt.Println("Successfully published the message to Kafka: ", msg)
 		return
 	} else {
 		select {
