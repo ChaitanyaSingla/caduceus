@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"container/ring"
 	"crypto/hmac"
+	cr "crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -141,6 +142,7 @@ type OutboundSenderFactory struct {
 	// Only required if KmsEnabled is enabled. KmsKeyARN will identify the ARN which will be used for encryption in AWS SQS Queue.
 	KmsKeyARN string
 
+	// FlushInterval defines how often messages accumulated in memory will be batched and sent to AWS SQS.
 	FlushInterval time.Duration
 
 	KafkaEnabled bool
@@ -205,9 +207,9 @@ type CaduceusOutboundSender struct {
 	fifoBasedQueue                   bool
 	sendMsgToSqsCounter              metrics.Counter
 	receivedMsgFromSqsCounter        metrics.Counter
-	failedSentMsgsCount              metrics.Counter
-	failedReceivedMsgsCount          metrics.Counter
-	failedDeletedMessagesCount       metrics.Counter
+	failedSendToSqsMsgsCount         metrics.Counter
+	failedReceiveFromSqsMsgsCount    metrics.Counter
+	failedDeleteFromSqsMessagesCount metrics.Counter
 	sqsBatch                         []*sqs.SendMessageBatchRequestEntry
 	sqsBatchMutex                    sync.Mutex
 	sqsBatchTicker                   *time.Ticker
@@ -271,14 +273,15 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 
 	fmt.Println("AWS SQS Enabled: ", osf.AwsSqsEnabled, " and Kafka Enabled:", osf.KafkaEnabled)
 	if osf.AwsSqsEnabled {
+		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "AWS Sqs is enabled")
 		awsRegion, err := osf.getAwsRegionForAwsSqs()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get AWS region for AWS Sqs: %w", err)
 		}
 
 		var awsConfig *aws.Config
 		if osf.RoleBasedAccess {
-			fmt.Println("Role Based Access is Enabled with aws region: ", awsRegion)
+			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Role Based Access is Enabled with aws region: ", awsRegion)
 			awsConfig = &aws.Config{
 				Region: aws.String(awsRegion),
 			}
@@ -293,7 +296,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create AWS session: %w", err)
 		}
-		fmt.Println("Successfully created a new session with SQS client")
+		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Successfully created a new session with SQS client")
 
 		caduceusOutboundSender.sqsClient = sqs.New(sess)
 		caduceusOutboundSender.sqsQueueURL, err = osf.initializeQueue(caduceusOutboundSender.sqsClient)
@@ -307,7 +310,8 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		} else {
 			caduceusOutboundSender.flushInterval = osf.FlushInterval
 		}
-		fmt.Println("Starting ticket to flush sqs batch with flush interval as: ", caduceusOutboundSender.flushInterval.Seconds())
+
+		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Starting ticker to flush sqs batch with flush interval: ", caduceusOutboundSender.flushInterval.Seconds())
 		caduceusOutboundSender.sqsBatchTicker = time.NewTicker(caduceusOutboundSender.flushInterval)
 		go func() {
 			for range caduceusOutboundSender.sqsBatchTicker.C {
@@ -390,19 +394,18 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 			Entries:  batch,
 		})
 		if err != nil {
-			fmt.Println("Error while sending SQS batch:", err)
+			level.Info(obs.logger).Log(logging.MessageKey(), "failed to send Sqs batch: ", err.Error())
 			for range batch {
-				obs.failedSentMsgsCount.With("url", obs.id, "source", "sqsBatch").Add(1.0)
+				obs.failedSendToSqsMsgsCount.With("url", obs.id, "source", "sqsBatch").Add(1.0)
 			}
 		} else {
-			fmt.Printf("Successfully sent SQS batch of %d messages\n", len(batch))
+			level.Info(obs.logger).Log(logging.MessageKey(), "Successfully sent Sqs batch having size: ", len(batch))
 			for range batch {
 				obs.sendMsgToSqsCounter.With("url", obs.id, "source", "sqsBatch").Add(1.0)
 			}
 		}
 	}
 
-	// reset slice but keep backing array to avoid churn
 	obs.sqsBatch = obs.sqsBatch[:0]
 }
 
@@ -411,7 +414,7 @@ func (osf OutboundSenderFactory) getQueueName() string {
 	if osf.FifoBasedQueue && !strings.HasSuffix(queueName, ".fifo") {
 		queueName += ".fifo"
 	}
-	fmt.Println("AWS SQS queue name: ", queueName)
+	level.Info(osf.Logger).Log(logging.MessageKey(), "AWS Sqs queue name: ", queueName)
 	return queueName
 }
 
@@ -423,22 +426,22 @@ func (osf OutboundSenderFactory) initializeQueue(sqsClient *sqs.SQS) (string, er
 	})
 
 	if err == nil {
-		fmt.Println("Queue already exists in AWS SQS:", *getQueueOutput.QueueUrl)
+		level.Info(osf.Logger).Log(logging.MessageKey(), "Queue already exists in AWS Sqs: ", *getQueueOutput.QueueUrl)
 		return *getQueueOutput.QueueUrl, nil
 	}
 
 	if aerr, ok := err.(awserr.Error); ok && aerr.Code() == sqs.ErrCodeQueueDoesNotExist {
-		fmt.Println("Queue does not exist. Creating new queue...")
+		level.Info(osf.Logger).Log(logging.MessageKey(), "Queue does not exist. Creating new queue...")
 
 		attrs := map[string]*string{}
 
 		if osf.FifoBasedQueue {
-			fmt.Println("FiFo based queue is enabled")
+			level.Info(osf.Logger).Log(logging.MessageKey(), "FiFo based queue is enabled")
 			attrs["FifoQueue"] = aws.String("true")
 			attrs["ContentBasedDeduplication"] = aws.String("true")
 		}
 		if osf.KmsEnabled && osf.KmsKeyARN != "" {
-			fmt.Println("Kms for SQS is enabled with kms key: ", osf.KmsKeyARN)
+			level.Info(osf.Logger).Log(logging.MessageKey(), "KMS for AWS Sqs is enabled")
 			attrs["KmsMasterKeyId"] = aws.String(osf.KmsKeyARN)
 		}
 
@@ -452,15 +455,15 @@ func (osf OutboundSenderFactory) initializeQueue(sqsClient *sqs.SQS) (string, er
 			}(),
 		})
 		if err != nil {
-			fmt.Println("failed to create queue: ", err)
+			level.Info(osf.Logger).Log(logging.MessageKey(), "failed to create queue in AWS Sqs: ", err.Error())
 			return "", fmt.Errorf("failed to create queue: %w", err)
 		}
 
-		fmt.Println("Successfully created queue:", *createQueueOutput.QueueUrl)
+		level.Info(osf.Logger).Log(logging.MessageKey(), "Successfully created queue: ", *createQueueOutput.QueueUrl)
 		return *createQueueOutput.QueueUrl, nil
 	}
 
-	fmt.Println("failed to get queue URL from AWS SQS: ", err)
+	level.Info(osf.Logger).Log(logging.MessageKey(), "failed to get queue URL from AWS SQS: ", err.Error())
 	return "", fmt.Errorf("failed to get queue URL from AWS SQS: %w", err)
 }
 
@@ -779,8 +782,8 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 }
 
 func randomID() string {
-	b := make([]byte, 8) // 8 bytes = 16 hex chars
-	if _, err := rand.Read(b); err != nil {
+	b := make([]byte, 8)
+	if _, err := cr.Read(b); err != nil {
 		return fmt.Sprintf("%d", time.Now().UnixNano()) // fallback
 	}
 	return hex.EncodeToString(b)
@@ -830,17 +833,14 @@ Loop:
 			})
 			if err != nil || len(consumedMessage.Messages) == 0 {
 				if err != nil {
-					obs.failedReceivedMsgsCount.With("url", obs.id, "source", "source").Add(1.0)
-					fmt.Printf("Error while consuming messages from AWS SQS: %v\n", err)
-					obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Error while consuming messages from AWS SQS", logging.ErrorKey(), err)
+					obs.failedReceiveFromSqsMsgsCount.With("url", obs.id, "source", "sqsBatch").Add(1.0)
+					level.Info(obs.logger).Log(logging.MessageKey(), "Error while consuming messages from AWS Sqs: "+err.Error())
 				} else {
 					time.Sleep(200 * time.Millisecond) // avoid tight loop
 				}
 				continue
 			}
 
-			fmt.Printf("Received batch of %d messages from AWS SQS\n", len(consumedMessage.Messages))
-			level.Info(obs.logger).Log(logging.MessageKey(), "Received messages batch from AWS SQS", "count", len(consumedMessage.Messages))
 			for _, sqsMsg := range consumedMessage.Messages {
 				msg = &wrp.Message{}
 				err = json.Unmarshal([]byte(*sqsMsg.Body), msg)
@@ -849,23 +849,19 @@ Loop:
 					continue
 				}
 
-				fmt.Println("Successfully received message from AWS SQS: ", msg)
-				level.Info(obs.logger).Log(logging.MessageKey(), "Successfully received message from AWS SQS", "sqs.message.id", sqsMsg.MessageId)
-				obs.receivedMsgFromSqsCounter.With("url", obs.id, "source", "source").Add(1.0)
+				level.Info(obs.logger).Log(logging.MessageKey(), "Received message from AWS Sqs having message Id: ", sqsMsg.MessageId)
+				obs.receivedMsgFromSqsCounter.With("url", obs.id, "source", "sqsBatch").Add(1.0)
 				obs.sendMessage(msg)
 
-				fmt.Println("Deleting message from queue: ", obs.sqsQueueURL)
 				_, err = obs.sqsClient.DeleteMessage(&sqs.DeleteMessageInput{
 					QueueUrl:      aws.String(obs.sqsQueueURL),
 					ReceiptHandle: sqsMsg.ReceiptHandle,
 				})
 				if err != nil {
-					obs.failedDeletedMessagesCount.With("url", obs.id, "source", "source").Add(1.0)
-					fmt.Printf("Error while deleting messages from AWS SQS: %v\n", err)
-					obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "Failed to delete AWS SQS message", logging.ErrorKey(), err)
+					level.Info(obs.logger).Log(logging.MessageKey(), "Failed to delete AWS Sqs message: ", err.Error())
+					obs.failedDeleteFromSqsMessagesCount.With("url", obs.id, "source", "sqsBatch").Add(1.0)
 				}
-				fmt.Println("Successfully deleted message from AWS SQS: ", msg)
-				level.Info(obs.logger).Log(logging.MessageKey(), "Successfully deleted message from AWS SQS")
+				level.Info(obs.logger).Log(logging.MessageKey(), "Message deleted from AWS Sqs having message Id: ", sqsMsg.MessageId)
 			}
 		} else if obs.kafkaConsumer != nil {
 			kafkaMsg, err := obs.kafkaConsumer.ReadMessage(500 * time.Millisecond)
@@ -1031,27 +1027,25 @@ func (obs *CaduceusOutboundSender) send(urls *ring.Ring, secret, acceptType stri
 
 	retryOptions := xhttp.RetryOptions{
 		Logger:   obs.logger,
-		Retries:  3,
-		Interval: 10 * time.Millisecond,
+		Retries:  obs.deliveryRetries,
+		Interval: obs.deliveryInterval,
 		Counter:  obs.deliveryRetryCounter.With("url", obs.id, "event", event),
 		// Always retry on failures up to the max count.
-		ShouldRetry: xhttp.ShouldRetry,
-		ShouldRetryStatus: func(statusCode int) bool {
-			return statusCode < 200 || statusCode >= 300
-		},
+		ShouldRetry:       xhttp.ShouldRetry,
+		ShouldRetryStatus: xhttp.RetryCodes,
 	}
 
-	// // update subsequent requests with the next url in the list upon failure
-	// retryOptions.UpdateRequest = func(request *http.Request) {
-	// 	urls = urls.Next()
-	// 	tmp, err := url.Parse(urls.Value.(string))
-	// 	if err != nil {
-	// 		obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "failed to update url",
-	// 			"url", urls.Value.(string), logging.ErrorKey(), err)
-	// 		return
-	// 	}
-	// 	request.URL = tmp
-	// }
+	// update subsequent requests with the next url in the list upon failure
+	retryOptions.UpdateRequest = func(request *http.Request) {
+		urls = urls.Next()
+		tmp, err := url.Parse(urls.Value.(string))
+		if err != nil {
+			obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "failed to update url",
+				"url", urls.Value.(string), logging.ErrorKey(), err)
+			return
+		}
+		request.URL = tmp
+	}
 
 	// Send it
 	level.Debug(obs.logger).Log(
