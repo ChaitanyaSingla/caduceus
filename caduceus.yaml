@@ -466,10 +466,10 @@ sender:
 
     # Number of partitions to create if KafkaEnsureTopic = true and the topic
     # does not already exist. More partitions = more parallelism for consumers. Defauls to 1.
-    kafkaNumPartitions: 1
+    kafkaNumPartitions: 3
 
     # Replication factor to use when creating the topic. Defauls to 1.
-    kafkaReplicationFactor: 1
+    kafkaReplicationFactor: 3
 
     # Timeout (in ms) for AdminClient operations like CreateTopics.
     # If exceeded, topic creation fails with a timeout error.
@@ -503,7 +503,7 @@ sender:
 
       # Enable exactly-once semantics (avoid duplicate writes on retries).
       # Recommended for financial/critical systems.
-      kafkaEnableIdempotence: false
+      kafkaEnableIdempotence: true
 
       # Max requests in-flight per connection.
       # If idempotence=true, keep ≤5 to preserve ordering.
@@ -530,7 +530,7 @@ sender:
       kafkaConsumerQueuedMaxMessagesKbytes: 2097151   # ~2 GB - 1 KB (max allowed)
 
       # Automatically commit offsets back to Kafka? (saves "where you left off")
-      kafkaConsumerEnableAutoCommit: false
+      kafkaConsumerEnableAutoCommit: true
 
       # If auto-commit is enabled, how often (ms) to commit offsets.
       kafkaConsumerAutoCommitIntervalMs: 100
