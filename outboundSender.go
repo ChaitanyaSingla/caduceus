@@ -102,12 +102,6 @@ type OutboundSenderFactory struct {
 	// Time in between delivery retries
 	DeliveryInterval time.Duration
 
-	// Set of retry code in case of delivery retry failure
-	DeliveryRetryCodeSet map[int]struct{}
-
-	// Whether to rotate through the list of URLs on each retry attempt.
-	RetryRotateURL bool
-
 	// Metrics registry.
 	MetricsRegistry CaduceusMetricsRegistry
 
@@ -174,8 +168,6 @@ type CaduceusOutboundSender struct {
 	queueSize                        int
 	deliveryRetries                  int
 	deliveryInterval                 time.Duration
-	deliveryRetryCodeSet             map[int]struct{}
-	retryRotateURL                   bool
 	deliveryCounter                  metrics.Counter
 	deliveryRetryCounter             metrics.Counter
 	droppedQueueFullCounter          metrics.Counter
@@ -249,18 +241,16 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 	)
 
 	caduceusOutboundSender := &CaduceusOutboundSender{
-		id:                   osf.Listener.Webhook.Config.URL,
-		listener:             osf.Listener,
-		sender:               osf.Sender,
-		queueSize:            osf.QueueSize,
-		cutOffPeriod:         osf.CutOffPeriod,
-		deliverUntil:         osf.Listener.Webhook.Until,
-		logger:               decoratedLogger,
-		deliveryRetries:      osf.DeliveryRetries,
-		deliveryInterval:     osf.DeliveryInterval,
-		deliveryRetryCodeSet: osf.DeliveryRetryCodeSet,
-		retryRotateURL:       osf.RetryRotateURL,
-		maxWorkers:           osf.NumWorkers,
+		id:               osf.Listener.Webhook.Config.URL,
+		listener:         osf.Listener,
+		sender:           osf.Sender,
+		queueSize:        osf.QueueSize,
+		cutOffPeriod:     osf.CutOffPeriod,
+		deliverUntil:     osf.Listener.Webhook.Until,
+		logger:           decoratedLogger,
+		deliveryRetries:  osf.DeliveryRetries,
+		deliveryInterval: osf.DeliveryInterval,
+		maxWorkers:       osf.NumWorkers,
 		failureMsg: FailureMessage{
 			Original:     osf.Listener,
 			Text:         failureText,
@@ -959,26 +949,20 @@ func (obs *CaduceusOutboundSender) send(urls *ring.Ring, secret, acceptType stri
 		Interval: obs.deliveryInterval,
 		Counter:  obs.deliveryRetryCounter.With("url", obs.id, "event", event),
 		// Always retry on failures up to the max count.
-		ShouldRetry: xhttp.ShouldRetry,
+		ShouldRetry:       xhttp.ShouldRetry,
+		ShouldRetryStatus: xhttp.RetryCodes,
 	}
 
-	retryOptions.ShouldRetryStatus = func(status int) bool {
-		_, shouldRetry := obs.deliveryRetryCodeSet[status]
-		return shouldRetry
-	}
-
-	if obs.retryRotateURL {
-		// update subsequent requests with the next url in the list upon failure
-		retryOptions.UpdateRequest = func(request *http.Request) {
-			urls = urls.Next()
-			tmp, err := url.Parse(urls.Value.(string))
-			if err != nil {
-				obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "failed to update url",
-					"url", urls.Value.(string), logging.ErrorKey(), err)
-				return
-			}
-			request.URL = tmp
+	// update subsequent requests with the next url in the list upon failure
+	retryOptions.UpdateRequest = func(request *http.Request) {
+		urls = urls.Next()
+		tmp, err := url.Parse(urls.Value.(string))
+		if err != nil {
+			obs.logger.Log(level.Key(), level.ErrorValue(), logging.MessageKey(), "failed to update url",
+				"url", urls.Value.(string), logging.ErrorKey(), err)
+			return
 		}
+		request.URL = tmp
 	}
 
 	// Send it
