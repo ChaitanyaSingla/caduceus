@@ -104,6 +104,9 @@ type SenderWrapperFactory struct {
 
 	// The duration (in seconds) for which the call waits for a message to arrive in the queue before returning.
 	WaitTimeSeconds int64
+
+	// AWS SQS consumer count. Defaults to 1.
+	SqsConsumerCount int
 }
 
 type SenderWrapper interface {
@@ -143,6 +146,7 @@ type CaduceusSenderWrapper struct {
 	kmsKeyARN            string
 	flushInterval        time.Duration
 	waitTimeSeconds      int64
+	sqsConsumerCount     int
 }
 
 // New produces a new SenderWrapper implemented by CaduceusSenderWrapper
@@ -172,6 +176,7 @@ func (swf SenderWrapperFactory) New() (sw SenderWrapper, err error) {
 		kmsKeyARN:            swf.KmsKeyARN,
 		flushInterval:        swf.FlushInterval,
 		waitTimeSeconds:      swf.WaitTimeSeconds,
+		sqsConsumerCount:     swf.SqsConsumerCount,
 	}
 
 	if swf.Linger <= 0 {
@@ -222,6 +227,7 @@ func (sw *CaduceusSenderWrapper) Update(list []ancla.InternalWebhook) {
 		KmsKeyARN:            sw.kmsKeyARN,
 		FlushInterval:        sw.flushInterval,
 		WaitTimeSeconds:      sw.waitTimeSeconds,
+		SqsConsumerCount:     sw.sqsConsumerCount,
 	}
 
 	ids := make([]struct {

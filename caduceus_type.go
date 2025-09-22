@@ -59,16 +59,17 @@ type SenderConfig struct {
 }
 
 type AwsSqs struct {
-	AwsSqsEnabled   bool
-	AwsRegion       string
-	RoleBasedAccess bool
-	AccessKey       string
-	SecretKey       string
-	FifoBasedQueue  bool
-	KmsEnabled      bool
-	KmsKeyARN       string
-	FlushInterval   time.Duration
-	WaitTimeSeconds int64
+	AwsSqsEnabled    bool
+	AwsRegion        string
+	RoleBasedAccess  bool
+	AccessKey        string
+	SecretKey        string
+	FifoBasedQueue   bool
+	KmsEnabled       bool
+	KmsKeyARN        string
+	FlushInterval    time.Duration
+	WaitTimeSeconds  int64
+	SqsConsumerCount int
 }
 
 type CaduceusMetricsRegistry interface {

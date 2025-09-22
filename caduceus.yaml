@@ -456,6 +456,9 @@ sender:
     # The duration (in seconds) for which the call waits for a message to arrive in the queue before returning.
     waitTimeSeconds: 5
 
+    # AWS SQS consumer count. Defaults to 1.
+    sqsConsumerCount: 1
+
 # (Deprecated)
 # profilerFrequency: 15
 # profilerDuration: 15

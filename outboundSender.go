@@ -152,6 +152,9 @@ type OutboundSenderFactory struct {
 
 	// The duration (in seconds) for which the call waits for a message to arrive in the queue before returning.
 	WaitTimeSeconds int64
+
+	// AWS SQS consumer count. Default to 1
+	SqsConsumerCount int
 }
 
 type OutboundSender interface {
@@ -344,8 +347,17 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 	}
 
 	caduceusOutboundSender.workers = semaphore.New(caduceusOutboundSender.maxWorkers)
-	caduceusOutboundSender.wg.Add(1)
-	go caduceusOutboundSender.dispatcher()
+
+	numConsumers := osf.SqsConsumerCount
+	if numConsumers <= 0 {
+		numConsumers = 1
+	}
+	level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Initializing AWS SQS consumer having consumer count: "+
+		strconv.Itoa(numConsumers))
+	caduceusOutboundSender.wg.Add(numConsumers)
+	for i := 0; i < numConsumers; i++ {
+		go caduceusOutboundSender.dispatcher()
+	}
 
 	obs = caduceusOutboundSender
 
