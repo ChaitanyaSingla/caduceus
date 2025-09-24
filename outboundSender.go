@@ -374,7 +374,7 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 	}
 
 	// process in chunks of 10
-	for i := 0; i < len(obs.sqsBatch); i += 10 {
+	for i := 0; i < len(obs.sqsBatch); i += 5 {
 		end := i + 10
 		if end > len(obs.sqsBatch) {
 			end = len(obs.sqsBatch)
@@ -796,7 +796,7 @@ Loop:
 		if obs.sqsClient != nil {
 			consumedMessage, err := obs.sqsClient.ReceiveMessage(&sqs.ReceiveMessageInput{
 				QueueUrl:            aws.String(obs.sqsQueueURL),
-				MaxNumberOfMessages: aws.Int64(10),
+				MaxNumberOfMessages: aws.Int64(5),
 				WaitTimeSeconds:     aws.Int64(obs.waitTimeSeconds),
 			})
 			if err != nil || len(consumedMessage.Messages) == 0 {
