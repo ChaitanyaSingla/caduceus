@@ -373,9 +373,9 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 		return
 	}
 
-	// process in chunks of 10
-	for i := 0; i < len(obs.sqsBatch); i += 10 {
-		end := i + 10
+	// process in chunks of 5
+	for i := 0; i < len(obs.sqsBatch); i += 5 {
+		end := i + 5
 		if end > len(obs.sqsBatch) {
 			end = len(obs.sqsBatch)
 		}
