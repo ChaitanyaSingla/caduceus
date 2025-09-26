@@ -107,6 +107,12 @@ type SenderWrapperFactory struct {
 
 	// AWS SQS consumer count. Defaults to 1.
 	SqsConsumerCount int
+
+	// AWS SQS msg producer batch count. Default to 5
+	SqsMsgProducerBatchCount int
+
+	// AWS SQS msg consumer batch count. Default to 5
+	SqsMsgConsumerBatchCount int
 }
 
 type SenderWrapper interface {
@@ -117,66 +123,70 @@ type SenderWrapper interface {
 
 // CaduceusSenderWrapper contains no external parameters.
 type CaduceusSenderWrapper struct {
-	sender               httpClient
-	numWorkersPerSender  int
-	queueSizePerSender   int
-	deliveryRetries      int
-	deliveryInterval     time.Duration
-	deliveryRetryCodeSet map[int]struct{}
-	retryRotateURL       bool
-	cutOffPeriod         time.Duration
-	linger               time.Duration
-	logger               log.Logger
-	mutex                sync.RWMutex
-	senders              map[string]OutboundSender
-	metricsRegistry      CaduceusMetricsRegistry
-	eventType            metrics.Counter
-	queryLatency         metrics.Histogram
-	wg                   sync.WaitGroup
-	shutdown             chan struct{}
-	customPIDs           []string
-	disablePartnerIDs    bool
-	awsSqsEnabled        bool
-	awsRegion            string
-	roleBasedAccess      bool
-	accessKey            string
-	secretKey            string
-	fifoBasedQueue       bool
-	kmsEnabled           bool
-	kmsKeyARN            string
-	flushInterval        time.Duration
-	waitTimeSeconds      int64
-	sqsConsumerCount     int
+	sender                   httpClient
+	numWorkersPerSender      int
+	queueSizePerSender       int
+	deliveryRetries          int
+	deliveryInterval         time.Duration
+	deliveryRetryCodeSet     map[int]struct{}
+	retryRotateURL           bool
+	cutOffPeriod             time.Duration
+	linger                   time.Duration
+	logger                   log.Logger
+	mutex                    sync.RWMutex
+	senders                  map[string]OutboundSender
+	metricsRegistry          CaduceusMetricsRegistry
+	eventType                metrics.Counter
+	queryLatency             metrics.Histogram
+	wg                       sync.WaitGroup
+	shutdown                 chan struct{}
+	customPIDs               []string
+	disablePartnerIDs        bool
+	awsSqsEnabled            bool
+	awsRegion                string
+	roleBasedAccess          bool
+	accessKey                string
+	secretKey                string
+	fifoBasedQueue           bool
+	kmsEnabled               bool
+	kmsKeyARN                string
+	flushInterval            time.Duration
+	waitTimeSeconds          int64
+	sqsConsumerCount         int
+	sqsMsgProducerBatchCount int
+	sqsMsgConsumerBatchCount int
 }
 
 // New produces a new SenderWrapper implemented by CaduceusSenderWrapper
 // based on the factory configuration.
 func (swf SenderWrapperFactory) New() (sw SenderWrapper, err error) {
 	caduceusSenderWrapper := &CaduceusSenderWrapper{
-		sender:               swf.Sender,
-		numWorkersPerSender:  swf.NumWorkersPerSender,
-		queueSizePerSender:   swf.QueueSizePerSender,
-		deliveryRetries:      swf.DeliveryRetries,
-		deliveryInterval:     swf.DeliveryInterval,
-		deliveryRetryCodeSet: swf.DeliveryRetryCodeSet,
-		retryRotateURL:       swf.RetryRotateURL,
-		cutOffPeriod:         swf.CutOffPeriod,
-		linger:               swf.Linger,
-		logger:               swf.Logger,
-		metricsRegistry:      swf.MetricsRegistry,
-		customPIDs:           swf.CustomPIDs,
-		disablePartnerIDs:    swf.DisablePartnerIDs,
-		awsSqsEnabled:        swf.AwsSqsEnabled,
-		awsRegion:            swf.AwsRegion,
-		roleBasedAccess:      swf.RoleBasedAccess,
-		accessKey:            swf.AccessKey,
-		secretKey:            swf.SecretKey,
-		fifoBasedQueue:       swf.FifoBasedQueue,
-		kmsEnabled:           swf.KmsEnabled,
-		kmsKeyARN:            swf.KmsKeyARN,
-		flushInterval:        swf.FlushInterval,
-		waitTimeSeconds:      swf.WaitTimeSeconds,
-		sqsConsumerCount:     swf.SqsConsumerCount,
+		sender:                   swf.Sender,
+		numWorkersPerSender:      swf.NumWorkersPerSender,
+		queueSizePerSender:       swf.QueueSizePerSender,
+		deliveryRetries:          swf.DeliveryRetries,
+		deliveryInterval:         swf.DeliveryInterval,
+		deliveryRetryCodeSet:     swf.DeliveryRetryCodeSet,
+		retryRotateURL:           swf.RetryRotateURL,
+		cutOffPeriod:             swf.CutOffPeriod,
+		linger:                   swf.Linger,
+		logger:                   swf.Logger,
+		metricsRegistry:          swf.MetricsRegistry,
+		customPIDs:               swf.CustomPIDs,
+		disablePartnerIDs:        swf.DisablePartnerIDs,
+		awsSqsEnabled:            swf.AwsSqsEnabled,
+		awsRegion:                swf.AwsRegion,
+		roleBasedAccess:          swf.RoleBasedAccess,
+		accessKey:                swf.AccessKey,
+		secretKey:                swf.SecretKey,
+		fifoBasedQueue:           swf.FifoBasedQueue,
+		kmsEnabled:               swf.KmsEnabled,
+		kmsKeyARN:                swf.KmsKeyARN,
+		flushInterval:            swf.FlushInterval,
+		waitTimeSeconds:          swf.WaitTimeSeconds,
+		sqsConsumerCount:         swf.SqsConsumerCount,
+		sqsMsgProducerBatchCount: swf.SqsMsgProducerBatchCount,
+		sqsMsgConsumerBatchCount: swf.SqsMsgConsumerBatchCount,
 	}
 
 	if swf.Linger <= 0 {
@@ -204,30 +214,32 @@ func (swf SenderWrapperFactory) New() (sw SenderWrapper, err error) {
 func (sw *CaduceusSenderWrapper) Update(list []ancla.InternalWebhook) {
 	// We'll like need this, so let's get one ready
 	osf := OutboundSenderFactory{
-		Sender:               sw.sender,
-		CutOffPeriod:         sw.cutOffPeriod,
-		NumWorkers:           sw.numWorkersPerSender,
-		QueueSize:            sw.queueSizePerSender,
-		MetricsRegistry:      sw.metricsRegistry,
-		DeliveryRetries:      sw.deliveryRetries,
-		DeliveryInterval:     sw.deliveryInterval,
-		DeliveryRetryCodeSet: sw.deliveryRetryCodeSet,
-		RetryRotateURL:       sw.retryRotateURL,
-		Logger:               sw.logger,
-		CustomPIDs:           sw.customPIDs,
-		DisablePartnerIDs:    sw.disablePartnerIDs,
-		QueryLatency:         sw.queryLatency,
-		AwsSqsEnabled:        sw.awsSqsEnabled,
-		AwsRegion:            sw.awsRegion,
-		RoleBasedAccess:      sw.roleBasedAccess,
-		AccessKey:            sw.accessKey,
-		SecretKey:            sw.secretKey,
-		FifoBasedQueue:       sw.fifoBasedQueue,
-		KmsEnabled:           sw.kmsEnabled,
-		KmsKeyARN:            sw.kmsKeyARN,
-		FlushInterval:        sw.flushInterval,
-		WaitTimeSeconds:      sw.waitTimeSeconds,
-		SqsConsumerCount:     sw.sqsConsumerCount,
+		Sender:                   sw.sender,
+		CutOffPeriod:             sw.cutOffPeriod,
+		NumWorkers:               sw.numWorkersPerSender,
+		QueueSize:                sw.queueSizePerSender,
+		MetricsRegistry:          sw.metricsRegistry,
+		DeliveryRetries:          sw.deliveryRetries,
+		DeliveryInterval:         sw.deliveryInterval,
+		DeliveryRetryCodeSet:     sw.deliveryRetryCodeSet,
+		RetryRotateURL:           sw.retryRotateURL,
+		Logger:                   sw.logger,
+		CustomPIDs:               sw.customPIDs,
+		DisablePartnerIDs:        sw.disablePartnerIDs,
+		QueryLatency:             sw.queryLatency,
+		AwsSqsEnabled:            sw.awsSqsEnabled,
+		AwsRegion:                sw.awsRegion,
+		RoleBasedAccess:          sw.roleBasedAccess,
+		AccessKey:                sw.accessKey,
+		SecretKey:                sw.secretKey,
+		FifoBasedQueue:           sw.fifoBasedQueue,
+		KmsEnabled:               sw.kmsEnabled,
+		KmsKeyARN:                sw.kmsKeyARN,
+		FlushInterval:            sw.flushInterval,
+		WaitTimeSeconds:          sw.waitTimeSeconds,
+		SqsConsumerCount:         sw.sqsConsumerCount,
+		SqsMsgProducerBatchCount: sw.sqsMsgProducerBatchCount,
+		SqsMsgConsumerBatchCount: sw.sqsMsgConsumerBatchCount,
 	}
 
 	ids := make([]struct {

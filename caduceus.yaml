@@ -459,6 +459,12 @@ sender:
     # AWS SQS consumer count. Defaults to 1.
     sqsConsumerCount: 1
 
+    # AWS SQS msg producer batch count. Default to 5
+    sqsMsgProducerBatchCount: 5
+
+    # AWS SQS msg consumer batch count. Default to 5
+    sqsMsgConsumerBatchCount: 5
+
 # (Deprecated)
 # profilerFrequency: 15
 # profilerDuration: 15

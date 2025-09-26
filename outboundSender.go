@@ -155,6 +155,12 @@ type OutboundSenderFactory struct {
 
 	// AWS SQS consumer count. Default to 1
 	SqsConsumerCount int
+
+	// AWS SQS msg producer batch count. Default to 5
+	SqsMsgProducerBatchCount int
+
+	// AWS SQS msg consumer batch count. Default to 5
+	SqsMsgConsumerBatchCount int
 }
 
 type OutboundSender interface {
@@ -220,6 +226,8 @@ type CaduceusOutboundSender struct {
 	sqsBatchTicker                   *time.Ticker
 	flushInterval                    time.Duration
 	waitTimeSeconds                  int64
+	sqsMsgProducerBatchCount         int
+	sqsMsgConsumerBatchCount         int
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -321,6 +329,18 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 			caduceusOutboundSender.flushInterval = osf.FlushInterval
 		}
 
+		if osf.SqsMsgProducerBatchCount <= 0 {
+			caduceusOutboundSender.sqsMsgProducerBatchCount = 5
+		} else {
+			caduceusOutboundSender.sqsMsgProducerBatchCount = osf.SqsMsgProducerBatchCount
+		}
+
+		if osf.SqsMsgConsumerBatchCount <= 0 {
+			caduceusOutboundSender.sqsMsgConsumerBatchCount = 5
+		} else {
+			caduceusOutboundSender.sqsMsgConsumerBatchCount = osf.SqsMsgConsumerBatchCount
+		}
+
 		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Starting ticker to flush sqs batch with flush interval: "+
 			strconv.FormatFloat(caduceusOutboundSender.flushInterval.Seconds(), 'f', 2, 64))
 		caduceusOutboundSender.sqsBatchTicker = time.NewTicker(caduceusOutboundSender.flushInterval)
@@ -374,8 +394,8 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 	}
 
 	// process in chunks of 5
-	for i := 0; i < len(obs.sqsBatch); i += 5 {
-		end := i + 5
+	for i := 0; i < len(obs.sqsBatch); i += obs.sqsMsgProducerBatchCount {
+		end := i + obs.sqsMsgProducerBatchCount
 		if end > len(obs.sqsBatch) {
 			end = len(obs.sqsBatch)
 		}
@@ -796,7 +816,7 @@ Loop:
 		if obs.sqsClient != nil {
 			consumedMessage, err := obs.sqsClient.ReceiveMessage(&sqs.ReceiveMessageInput{
 				QueueUrl:            aws.String(obs.sqsQueueURL),
-				MaxNumberOfMessages: aws.Int64(5),
+				MaxNumberOfMessages: aws.Int64(int64(obs.sqsMsgConsumerBatchCount)),
 				WaitTimeSeconds:     aws.Int64(obs.waitTimeSeconds),
 			})
 			if err != nil || len(consumedMessage.Messages) == 0 {
