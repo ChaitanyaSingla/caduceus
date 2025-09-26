@@ -378,10 +378,10 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 	fmt.Println("Initializing AWS SQS consumer having consumer count: ", strconv.Itoa(numConsumers))
 	level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Initializing AWS SQS consumer having consumer count: "+
 		strconv.Itoa(numConsumers))
-	caduceusOutboundSender.wg.Add(numConsumers)
-	for i := 0; i < numConsumers; i++ {
-		go caduceusOutboundSender.dispatcher()
-	}
+	// caduceusOutboundSender.wg.Add(numConsumers)
+	// for i := 0; i < numConsumers; i++ {
+	// 	go caduceusOutboundSender.dispatcher()
+	// }
 
 	obs = caduceusOutboundSender
 
