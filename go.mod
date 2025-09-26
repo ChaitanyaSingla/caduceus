@@ -3,7 +3,7 @@ module github.com/xmidt-org/caduceus
 go 1.14
 
 // replace github.com/xmidt-org/ancla => /Users/chaitanyasingla/Desktop/Personal/forked-repo/ancla
-replace github.com/xmidt-org/ancla => github.com/ChaitanyaSingla/ancla v0.0.0-20250502092626-4af5b60659b9
+replace github.com/xmidt-org/ancla => github.com/ChaitanyaSingla/ancla v0.0.0-20250926132215-e7925e2b41f5
 
 require (
 	emperror.dev/emperror v0.33.0

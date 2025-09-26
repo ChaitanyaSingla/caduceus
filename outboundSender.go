@@ -228,6 +228,7 @@ type CaduceusOutboundSender struct {
 	waitTimeSeconds                  int64
 	sqsMsgProducerBatchCount         int
 	sqsMsgConsumerBatchCount         int
+	sqsMessageAttributes             map[string]*sqs.MessageAttributeValue
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -341,6 +342,8 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 			caduceusOutboundSender.sqsMsgConsumerBatchCount = osf.SqsMsgConsumerBatchCount
 		}
 
+		caduceusOutboundSender.sqsMessageAttributes = buildSqsAttributes(osf.Listener.Webhook.SqsMessageAttributes)
+
 		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Starting ticker to flush sqs batch with flush interval: "+
 			strconv.FormatFloat(caduceusOutboundSender.flushInterval.Seconds(), 'f', 2, 64))
 		caduceusOutboundSender.sqsBatchTicker = time.NewTicker(caduceusOutboundSender.flushInterval)
@@ -385,6 +388,17 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 	return
 }
 
+func buildSqsAttributes(attrs map[string]string) map[string]*sqs.MessageAttributeValue {
+	out := make(map[string]*sqs.MessageAttributeValue, len(attrs))
+	for k, v := range attrs {
+		out[k] = &sqs.MessageAttributeValue{
+			DataType:    aws.String("String"),
+			StringValue: aws.String(v),
+		}
+	}
+	return out
+}
+
 func (obs *CaduceusOutboundSender) flushSqsBatch() {
 	obs.sqsBatchMutex.Lock()
 	defer obs.sqsBatchMutex.Unlock()
@@ -400,6 +414,10 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 			end = len(obs.sqsBatch)
 		}
 		batch := obs.sqsBatch[i:end]
+
+		for _, entry := range batch {
+			entry.MessageAttributes = obs.sqsMessageAttributes
+		}
 
 		_, err := obs.sqsClient.SendMessageBatch(&sqs.SendMessageBatchInput{
 			QueueUrl: aws.String(obs.sqsQueueURL),
