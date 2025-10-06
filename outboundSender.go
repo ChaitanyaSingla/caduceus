@@ -424,11 +424,13 @@ func (obs *CaduceusOutboundSender) flushSqsBatch() {
 			Entries:  batch,
 		})
 		if err != nil {
+			fmt.Println("failed to send Sqs batch: " + err.Error())
 			level.Info(obs.logger).Log(logging.MessageKey(), "failed to send Sqs batch: "+err.Error())
 			for range batch {
 				obs.failedSendToSqsMsgsCount.With("url", obs.id, "source", "sqsBatch").Add(1.0)
 			}
 		} else {
+			fmt.Println("Successfully sent Sqs batch having size: " + strconv.Itoa(len(batch))
 			level.Info(obs.logger).Log(logging.MessageKey(), "Successfully sent Sqs batch having size: "+strconv.Itoa(len(batch)))
 			for range batch {
 				obs.sendMsgToSqsCounter.With("url", obs.id, "source", "sqsBatch").Add(1.0)
