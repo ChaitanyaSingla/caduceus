@@ -30,7 +30,7 @@ check:
 	golangci-lint run -n | tee errors.txt
 
 build:
-	CGO_ENABLED=0 $(GO) build $(GOBUILDFLAGS)
+	CGO_ENABLED=1 $(GO) build $(GOBUILDFLAGS)
 
 release: build
 	upx $(APP)
