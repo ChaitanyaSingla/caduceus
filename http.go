@@ -25,7 +25,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/kit/metrics"
-	uuid "github.com/satori/go.uuid"
+	uuid "github.com/gofrs/uuid"
 	"github.com/xmidt-org/webpa-common/v2/logging"
 	"github.com/xmidt-org/wrp-go/v3"
 )
@@ -161,7 +161,8 @@ func (sh *ServerHandler) fixWrp(msg *wrp.Message) *wrp.Message {
 
 	// Ensure there is a transaction id even if we make one up
 	if "" == msg.TransactionUUID {
-		msg.TransactionUUID = uuid.NewV4().String()
+		id, _ := uuid.NewV4()
+		msg.TransactionUUID = id.String()
 		if reason == "" {
 			reason = emptyUUIDReason
 		} else {
