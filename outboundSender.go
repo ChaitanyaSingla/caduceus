@@ -156,6 +156,9 @@ type OutboundSenderFactory struct {
 	// The duration (in seconds) for which the call waits for a message to arrive in the queue before returning.
 	WaitTimeSeconds int64
 
+	// If enabled, messages from AWS SQS will be consumed by Caduceus
+	ConsumeSqsMessageEnabled bool
+
 	// Enable or disable Kafka integration
 	KafkaEnabled bool
 
@@ -167,6 +170,9 @@ type OutboundSenderFactory struct {
 
 	// Consumer group ID (all consumers with the same ID share the work)
 	KafkaConsumerGroupID string
+
+	// If enabled, messages from Kafka will be consumed by Caduceus
+	ConsumeKafkaMessageEnabled bool
 
 	// Acknowledgment policy for writes:
 	// "all" = safest (leader + replicas must ack),
@@ -246,8 +252,10 @@ type CaduceusOutboundSender struct {
 	sqsBatchTicker                   *time.Ticker
 	flushInterval                    time.Duration
 	waitTimeSeconds                  int64
+	consumeSqsMessageEnabled         bool
 	kafkaTopic                       string
 	kafkaClient                      *kgo.Client
+	consumeKafkaMessageEnabled       bool
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -332,6 +340,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Successfully created a new session with SQS client")
 
 		caduceusOutboundSender.sqsClient = sqs.New(sess)
+		caduceusOutboundSender.consumeSqsMessageEnabled = osf.ConsumeSqsMessageEnabled
 		caduceusOutboundSender.sqsQueueURL, err = osf.initializeQueue(caduceusOutboundSender.sqsClient)
 		caduceusOutboundSender.fifoBasedQueue = osf.FifoBasedQueue
 		if err != nil {
@@ -389,6 +398,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Successfully created franz-go client")
 
 		caduceusOutboundSender.kafkaClient = client
+		caduceusOutboundSender.consumeKafkaMessageEnabled = osf.ConsumeKafkaMessageEnabled
 		caduceusOutboundSender.kafkaTopic = osf.KafkaTopic
 	}
 
@@ -927,7 +937,7 @@ func (obs *CaduceusOutboundSender) dispatcher() {
 
 Loop:
 	for {
-		if obs.sqsClient != nil {
+		if obs.consumeSqsMessageEnabled {
 			consumedMessage, err := obs.sqsClient.ReceiveMessage(&sqs.ReceiveMessageInput{
 				QueueUrl:            aws.String(obs.sqsQueueURL),
 				MaxNumberOfMessages: aws.Int64(10),
@@ -965,7 +975,7 @@ Loop:
 				}
 				level.Info(obs.logger).Log(logging.MessageKey(), "Message deleted from AWS Sqs having message Id: "+*sqsMsg.MessageId)
 			}
-		} else if obs.kafkaClient != nil {
+		} else if obs.consumeKafkaMessageEnabled {
 			for {
 				fetches := obs.kafkaClient.PollFetches(context.Background())
 
@@ -994,7 +1004,7 @@ Loop:
 					obs.sendMessage(msg)
 				})
 			}
-		} else {
+		} else if obs.sqsClient == nil && obs.kafkaClient == nil {
 			// Always pull a new queue in case we have been cutoff or are shutting
 			// down.
 			msgQueue := obs.queue.Load().(chan *wrp.Message)

@@ -60,44 +60,31 @@ type SenderConfig struct {
 }
 
 type AwsSqs struct {
-	AwsSqsEnabled   bool
-	AwsRegion       string
-	RoleBasedAccess bool
-	AccessKey       string
-	SecretKey       string
-	FifoBasedQueue  bool
-	KmsEnabled      bool
-	KmsKeyARN       string
-	FlushInterval   time.Duration
-	WaitTimeSeconds int64
+	AwsSqsEnabled            bool
+	AwsRegion                string
+	RoleBasedAccess          bool
+	AccessKey                string
+	SecretKey                string
+	FifoBasedQueue           bool
+	KmsEnabled               bool
+	KmsKeyARN                string
+	FlushInterval            time.Duration
+	WaitTimeSeconds          int64
+	ConsumeSqsMessageEnabled bool
 }
 
 type Kafka struct {
-	KafkaEnabled           bool
-	KafkaBrokers           string
-	KafkaTopic             string
-	KafkaGroupID           string
-	KafkaProducer          KafkaProducer
-	KafkaConsumer          KafkaConsumer
-	KafkaEnsureTopic       bool
-	KafkaNumPartitions     int
-	KafkaReplicationFactor int
-	KafkaAdminTimeoutMs    int
+	KafkaEnabled               bool
+	KafkaBrokers               string
+	KafkaTopic                 string
+	KafkaConsumerGroupID       string
+	ConsumeKafkaMessageEnabled bool
+	KafkaProducer              KafkaProducer
 }
 
 type KafkaProducer struct {
 	KafkaAcks        string
 	KafkaCompression string
-}
-
-type KafkaConsumer struct {
-	KafkaConsumerFetchMinBytes           int
-	KafkaConsumerFetchWaitMaxMs          int
-	KafkaConsumerMaxPartitionFetchBytes  int
-	KafkaConsumerQueuedMinMessages       int
-	KafkaConsumerQueuedMaxMessagesKbytes int
-	KafkaConsumerEnableAutoCommit        bool
-	KafkaConsumerAutoCommitIntervalMs    int
 }
 
 type CaduceusMetricsRegistry interface {

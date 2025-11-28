@@ -452,6 +452,9 @@ sender:
 
     # flushInterval defines how often messages accumulated in memory will be batched and sent to AWS SQS.
     flushInterval: 10s
+
+    # If enabled, messages from AWS SQS will be consumed by Caduceus
+    consumeSqsMessageEnabled: false
   
   kafka:
     # Enable or disable Kafka integration
@@ -464,22 +467,10 @@ sender:
     kafkaTopic: caduceus-local
 
     # Consumer group ID (all consumers with the same ID share the work)
-    kafkaGroupID: caduceus-groupId
+    kafkaConsumerGroupID: caduceus-groupId
 
-    # If true, the service will attempt to create the Kafka topic on startup
-    # using the AdminClient. If false, assumes the topic already exists.
-    kafkaEnsureTopic: true
-
-    # Number of partitions to create if KafkaEnsureTopic = true and the topic
-    # does not already exist. More partitions = more parallelism for consumers. Defauls to 1.
-    kafkaNumPartitions: 3
-
-    # Replication factor to use when creating the topic. Defauls to 1.
-    kafkaReplicationFactor: 3
-
-    # Timeout (in ms) for AdminClient operations like CreateTopics.
-    # If exceeded, topic creation fails with a timeout error.
-    kafkaAdminTimeoutMs: 0
+    # If enabled, messages from Kafka will be consumed by Caduceus
+    consumeKafkaMessageEnabled: false
 
     kafkaProducer:
       # Acknowledgment policy for message writes:
@@ -491,29 +482,6 @@ sender:
       # Compression type to reduce payload size and improve throughput.
       # Options: lz4, zstd, snappy, gzip, none
       kafkaCompression: lz4
-
-    kafkaConsumer:
-      # Minimum amount of data (bytes) the broker should return per fetch.
-      # Larger values improve throughput but may add latency.
-      kafkaConsumerFetchMinBytes: 5242880   # 5 MB
-
-      # How long (ms) the broker waits to accumulate fetch.min.bytes before responding.
-      kafkaConsumerFetchWaitMaxMs: 50
-
-      # Max data per partition the consumer will fetch in a single request.
-      kafkaConsumerMaxPartitionFetchBytes: 16777216   # 16 MB
-
-      # Minimum number of messages to keep queued locally in memory.
-      kafkaConsumerQueuedMinMessages: 100000
-
-      # Max memory (KB) to use for the consumer's local message queue.
-      kafkaConsumerQueuedMaxMessagesKbytes: 2097151   # ~2 GB - 1 KB (max allowed)
-
-      # Automatically commit offsets back to Kafka? (saves "where you left off")
-      kafkaConsumerEnableAutoCommit: true
-
-      # If auto-commit is enabled, how often (ms) to commit offsets.
-      kafkaConsumerAutoCommitIntervalMs: 100
 
     # The duration (in seconds) for which the call waits for a message to arrive in the queue before returning.
     waitTimeSeconds: 5
