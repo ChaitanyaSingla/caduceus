@@ -49,6 +49,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/kit/metrics"
+	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/xmidt-org/ancla"
 	"github.com/xmidt-org/webpa-common/v2/device"
 	"github.com/xmidt-org/webpa-common/v2/logging"
@@ -312,6 +314,7 @@ type CaduceusOutboundSender struct {
 	kafkaProducer                    *kafka.Producer
 	kafkaConsumer                    *kafka.Consumer
 	kafkaTopic                       string
+	kafkaClient                      *kgo.Client
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -426,97 +429,24 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		fmt.Println("Kafka Enabled with brokers:", osf.KafkaBrokers)
 		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Kafka Enabled with brokers:", osf.KafkaBrokers)
 
-		// Producer
-		producerConfig := osf.getProducerConfig()
-		producer, err := kafka.NewProducer(producerConfig)
+		opts, err := osf.getFranzProducerOptions()
 		if err != nil {
-			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create Kafka producer:", err.Error())
-			return nil, fmt.Errorf("failed to create Kafka producer: %w", err)
-		}
-		fmt.Println("Successfully created producer")
-		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Successfully created producer")
-
-		// Create Kafka topic / skip if already exists
-		if osf.KafkaEnsureTopic {
-			numParts := osf.KafkaNumPartitions
-			if numParts <= 0 {
-				numParts = 1
-			}
-			repl := osf.KafkaReplicationFactor
-			if repl <= 0 {
-				repl = 1
-			}
-
-			admin, err := kafka.NewAdminClient(&kafka.ConfigMap{"bootstrap.servers": osf.KafkaBrokers})
-			if err != nil {
-				fmt.Println("Kafka AdminClient failed (topic ensure skipped): ", err.Error())
-				level.Info(caduceusOutboundSender.logger).Log(
-					logging.MessageKey(), "Kafka AdminClient failed (topic ensure skipped):", err.Error(),
-				)
-				return nil, err
-			}
-			defer admin.Close()
-
-			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(osf.KafkaAdminTimeoutMs)*time.Millisecond)
-			if osf.KafkaAdminTimeoutMs <= 0 {
-				cancel()
-				ctx = context.Background()
-			} else {
-				defer cancel()
-			}
-
-			result, err := admin.CreateTopics(ctx, []kafka.TopicSpecification{{
-				Topic:             osf.KafkaTopic,
-				NumPartitions:     numParts,
-				ReplicationFactor: repl,
-			}})
-
-			if err != nil {
-				fmt.Println("Failed to create Kafka topic ", err.Error())
-				level.Info(caduceusOutboundSender.logger).Log(
-					logging.MessageKey(), "Failed to create Kafka topic", err.Error(),
-				)
-				return nil, err
-			}
-
-			// Inspect result for per-topic errors
-			for _, res := range result {
-				if res.Error.Code() == kafka.ErrTopicAlreadyExists {
-					fmt.Println("Kafka topic already exists: ", res.Topic)
-					level.Info(caduceusOutboundSender.logger).Log(
-						logging.MessageKey(), "Kafka topic already exists:", res.Topic,
-					)
-				} else if res.Error.Code() != kafka.ErrNoError {
-					fmt.Println("Kafka topic creation failed: ", res.Error)
-					level.Info(caduceusOutboundSender.logger).Log(
-						logging.MessageKey(), "Kafka topic creation failed:", res.Error,
-					)
-				} else {
-					fmt.Println("Kafka topic created successfully: ", res.Topic)
-					level.Info(caduceusOutboundSender.logger).Log(
-						logging.MessageKey(), "Kafka topic created successfully:", res.Topic,
-					)
-				}
-			}
+			fmt.Println("failed to create franz-go client options: ", err)
+			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go client options:", err.Error())
+			return nil, fmt.Errorf("failed to create franz-go client options: %w", err)
 		}
 
-		// Consumer
-		// consumerConfig := osf.getConsumerConfig()
-		// consumer, err := kafka.NewConsumer(consumerConfig)
-		// if err != nil {
-		// 	level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create Kafka consumer:", err.Error())
-		// 	return nil, fmt.Errorf("failed to create Kafka consumer: %w", err)
-		// }
-		// fmt.Println("Successfully created consumer")
-		// level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Successfully created consumer")
+		client, err := kgo.NewClient(opts...)
+		if err != nil {
+			fmt.Println("failed to create franz-go producer: ", err)
+			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go producer:", err.Error())
+			return nil, fmt.Errorf("failed to create franz-go producer: %w", err)
+		}
 
-		// if err := consumer.Subscribe(osf.KafkaTopic, nil); err != nil {
-		// 	level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Kafka subscribe failed:", err.Error())
-		// 	return nil, fmt.Errorf("failed to subscribe: %w", err)
-		// }
+		fmt.Println("Successfully created franz-go producer")
+		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Successfully created franz-go producer")
 
-		caduceusOutboundSender.kafkaProducer = producer
-		// caduceusOutboundSender.kafkaConsumer = consumer
+		caduceusOutboundSender.kafkaClient = client
 		caduceusOutboundSender.kafkaTopic = osf.KafkaTopic
 	}
 
@@ -544,97 +474,40 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 	return
 }
 
-func (osf OutboundSenderFactory) getConsumerConfig() *kafka.ConfigMap {
-	// Defaults if not provided
-	fetchMin := osf.KafkaConsumerFetchMinBytes
-	if fetchMin <= 0 {
-		fetchMin = 5242880
-	}
-	fetchWait := osf.KafkaConsumerFetchWaitMaxMs
-	if fetchWait <= 0 {
-		fetchWait = 50
-	}
-	maxPartFetch := osf.KafkaConsumerMaxPartitionFetchBytes
-	if maxPartFetch <= 0 {
-		maxPartFetch = 16777216
-	}
-	qMin := osf.KafkaConsumerQueuedMinMessages
-	if qMin <= 0 {
-		qMin = 100000
-	}
-	qMaxKB := osf.KafkaConsumerQueuedMaxMessagesKbytes
-	if qMaxKB <= 0 {
-		qMaxKB = 2097151
-	}
-	autoCommitInt := osf.KafkaConsumerAutoCommitIntervalMs
-	if autoCommitInt <= 0 {
-		autoCommitInt = 100
+func (osf OutboundSenderFactory) getFranzProducerOptions() ([]kgo.Opt, error) {
+	var acks kgo.Acks
+	switch strings.ToLower(osf.KafkaAcks) {
+	case "", "all", "-1":
+		acks = kgo.AllISRAcks()
+	case "1", "leader":
+		acks = kgo.LeaderAck()
+	case "0", "none":
+		acks = kgo.NoAck()
+	default:
+		acks = kgo.AllISRAcks()
 	}
 
-	consumerConfig := &kafka.ConfigMap{
-		"bootstrap.servers":          osf.KafkaBrokers,
-		"group.id":                   osf.KafkaGroupID,
-		"auto.offset.reset":          "earliest",
-		"enable.auto.commit":         osf.KafkaConsumerEnableAutoCommit,
-		"auto.commit.interval.ms":    autoCommitInt,
-		"fetch.min.bytes":            fetchMin,
-		"fetch.wait.max.ms":          fetchWait,
-		"max.partition.fetch.bytes":  maxPartFetch,
-		"queued.min.messages":        qMin,
-		"queued.max.messages.kbytes": qMaxKB,
-		"go.events.channel.enable":   true,
-	}
-	return consumerConfig
-}
-
-func (osf OutboundSenderFactory) getProducerConfig() *kafka.ConfigMap {
-	// Defaults if not provided
-	acks := osf.KafkaAcks
-	if acks == "" {
-		acks = "all"
-	}
-	compression := osf.KafkaCompression
-	if compression == "" {
-		compression = "lz4"
-	}
-	linger := osf.KafkaLingerMs
-	if linger <= 0 {
-		linger = 10
-	}
-	batchNum := osf.KafkaBatchNumMessages
-	if batchNum <= 0 {
-		batchNum = 10000
-	}
-	qKbytes := osf.KafkaQueueBufferingMaxKbytes
-	if qKbytes <= 0 {
-		qKbytes = 1048576
-	} // 1GB
-	qMsgs := osf.KafkaQueueBufferingMaxMessages
-	if qMsgs <= 0 {
-		qMsgs = 1000000
-	}
-	maxInflight := osf.KafkaMaxInFlight
-	if maxInflight <= 0 {
-		maxInflight = 5
-	}
-	dTimeout := osf.KafkaDeliveryTimeoutMs
-	if dTimeout <= 0 {
-		dTimeout = 120000
+	var compressionCodecs kgo.CompressionCodec
+	switch strings.ToLower(osf.KafkaCompression) {
+	case "", "lz4":
+		compressionCodecs = kgo.Lz4Compression()
+	case "snappy":
+		compressionCodecs = kgo.SnappyCompression()
+	case "gzip":
+		compressionCodecs = kgo.GzipCompression()
+	case "zstd":
+		compressionCodecs = kgo.ZstdCompression()
+	default:
+		compressionCodecs = kgo.SnappyCompression()
 	}
 
-	producerConfig := &kafka.ConfigMap{
-		"bootstrap.servers":                     osf.KafkaBrokers,
-		"acks":                                  acks,
-		"compression.type":                      compression,
-		"linger.ms":                             linger,
-		"batch.num.messages":                    batchNum,
-		"queue.buffering.max.kbytes":            qKbytes,
-		"queue.buffering.max.messages":          qMsgs,
-		"enable.idempotence":                    osf.KafkaEnableIdempotence,
-		"max.in.flight.requests.per.connection": maxInflight,
-		"delivery.timeout.ms":                   dTimeout,
+	opts := []kgo.Opt{
+		kgo.SeedBrokers(osf.KafkaBrokers),
+		kgo.RequiredAcks(acks),
+		kgo.ProducerBatchCompression(compressionCodecs),
 	}
-	return producerConfig
+
+	return opts, nil
 }
 
 func (obs *CaduceusOutboundSender) flushSqsBatch() {
@@ -874,11 +747,8 @@ func (obs *CaduceusOutboundSender) Shutdown(gentle bool) {
 			obs.sqsBatchTicker.Stop()
 		}
 	}
-	if obs.kafkaProducer != nil {
-		obs.kafkaProducer.Close()
-	}
-	if obs.kafkaConsumer != nil {
-		obs.kafkaConsumer.Close()
+	if obs.kafkaClient != nil {
+		obs.kafkaClient.Close()
 	}
 	obs.mutex.Unlock()
 }
@@ -1023,19 +893,23 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 			key = []byte(messageGroupId)
 		}
 
-		err = obs.kafkaProducer.Produce(&kafka.Message{
-			TopicPartition: kafka.TopicPartition{Topic: &obs.kafkaTopic, Partition: kafka.PartitionAny},
-			Key:            key,
-			Value:          msgBytes,
-		}, nil)
-
-		if err != nil {
-			obs.failedSendToKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
-			fmt.Println("Failed to produce Kafka message:", err)
-			level.Info(obs.logger).Log(logging.MessageKey(), "Failed to produce Kafka message: "+err.Error())
+		record := &kgo.Record{
+			Topic: obs.kafkaTopic,
+			Key:   []byte(key),
+			Value: msgBytes,
 		}
-		obs.sendMsgToKafkaCounter.With("url", obs.id, "source", "kafka").Add(1.0)
-		fmt.Println("Successfully published the message to Kafka: ", msg)
+
+		obs.kafkaClient.Produce(context.Background(), record, func(r *kgo.Record, err error) {
+			if err != nil && !kerr.IsRetriable(err) {
+				obs.failedSendToKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
+				fmt.Println("Failed to produce Kafka message:", err)
+				level.Info(obs.logger).Log(logging.MessageKey(), "Failed to produce Kafka message: "+err.Error())
+				return
+			}
+
+			obs.sendMsgToKafkaCounter.With("url", obs.id, "source", "kafka").Add(1.0)
+			fmt.Println("Successfully published the message to Kafka: ", msg)
+		})
 		return
 	} else {
 		select {
