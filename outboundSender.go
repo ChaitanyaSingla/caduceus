@@ -429,14 +429,23 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		fmt.Println("Kafka Enabled with brokers:", osf.KafkaBrokers)
 		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Kafka Enabled with brokers:", osf.KafkaBrokers)
 
-		opts, err := osf.getFranzProducerOptions()
+		producerOpts, err := osf.getFranzProducerOptions()
 		if err != nil {
 			fmt.Println("failed to create franz-go client options: ", err)
 			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go client options:", err.Error())
 			return nil, fmt.Errorf("failed to create franz-go client options: %w", err)
 		}
 
-		client, err := kgo.NewClient(opts...)
+		consumerOpts, err := osf.getFranzConsumerOptions()
+		if err != nil {
+			fmt.Println("failed to create franz-go consumer options: ", err)
+			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go consumer options:", err.Error())
+			return nil, fmt.Errorf("failed to create franz-go consumer options: %w", err)
+		}
+
+		allOpts := append(producerOpts, consumerOpts...)
+
+		client, err := kgo.NewClient(allOpts...)
 		if err != nil {
 			fmt.Println("failed to create franz-go producer: ", err)
 			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go producer:", err.Error())
@@ -505,6 +514,15 @@ func (osf OutboundSenderFactory) getFranzProducerOptions() ([]kgo.Opt, error) {
 		kgo.SeedBrokers(osf.KafkaBrokers),
 		kgo.RequiredAcks(acks),
 		kgo.ProducerBatchCompression(compressionCodecs),
+	}
+
+	return opts, nil
+}
+
+func (osf OutboundSenderFactory) getFranzConsumerOptions() ([]kgo.Opt, error) {
+	opts := []kgo.Opt{
+		kgo.ConsumeTopics(osf.KafkaTopic),
+		kgo.ConsumerGroup("caduceus-perf"),
 	}
 
 	return opts, nil
@@ -1015,35 +1033,33 @@ Loop:
 				level.Info(obs.logger).Log(logging.MessageKey(), "Message deleted from AWS Sqs having message Id: "+*sqsMsg.MessageId)
 			}
 		} else if obs.kafkaConsumer != nil {
-			for e := range obs.kafkaConsumer.Events() {
-				switch ev := e.(type) {
-				case *kafka.Message:
-					// Deserialize into wrp.Message
-					msg = &wrp.Message{}
-					if err := json.Unmarshal(ev.Value, msg); err != nil {
+			for {
+				fetches := obs.kafkaClient.PollFetches(context.Background())
+
+				if errs := fetches.Errors(); len(errs) > 0 {
+					for _, err := range errs {
+						obs.failedReceiveFromKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
+						fmt.Printf("Kafka consumer error: %v\n", err)
+						level.Info(obs.logger).Log(logging.MessageKey(), "Kafka consumer error:", err)
+					}
+					continue
+				}
+
+				fetches.EachRecord(func(rec *kgo.Record) {
+					msg := &wrp.Message{}
+					if err := json.Unmarshal(rec.Value, msg); err != nil {
+						obs.failedReceiveFromKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
 						fmt.Println("Failed to unmarshal Kafka message:", err)
 						level.Info(obs.logger).Log(logging.MessageKey(), "Failed to unmarshal Kafka message:", err.Error())
-						continue
+						return
 					}
 
 					obs.receivedMsgFromKafkaCounter.With("url", obs.id, "source", "kafka").Add(1.0)
 					fmt.Println("Received Kafka message:", msg)
 					level.Info(obs.logger).Log(logging.MessageKey(), "Received Kafka message:", msg)
-					obs.sendMessage(msg) // already uses worker semaphore
 
-				case kafka.Error:
-					// librdkafka handles retries internally; we just log
-					if ev.Code() == kafka.ErrTimedOut {
-						// benign timeout, just ignore
-						continue
-					}
-					obs.failedReceiveFromKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
-					fmt.Printf("Kafka consumer error: %v\n", ev)
-					level.Info(obs.logger).Log(logging.MessageKey(), "Kafka consumer error:", ev.Error())
-
-				default:
-					// ignore stats, EOF, rebalance events etc. for performance
-				}
+					obs.sendMessage(msg)
+				})
 			}
 		} else {
 			// Always pull a new queue in case we have been cutoff or are shutting
