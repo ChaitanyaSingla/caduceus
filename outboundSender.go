@@ -378,14 +378,18 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 			return nil, fmt.Errorf("failed to create franz-go client options: %w", err)
 		}
 
-		consumerOpts, err := osf.getFranzConsumerOptions()
-		if err != nil {
-			fmt.Println("failed to create franz-go consumer options: ", err)
-			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go consumer options:", err.Error())
-			return nil, fmt.Errorf("failed to create franz-go consumer options: %w", err)
-		}
+		allOpts := producerOpts
 
-		allOpts := append(producerOpts, consumerOpts...)
+		// Only add consumer options if consuming is enabled
+		if osf.ConsumeKafkaMessageEnabled {
+			consumerOpts, err := osf.getFranzConsumerOptions()
+			if err != nil {
+				fmt.Println("failed to create franz-go consumer options: ", err)
+				level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go consumer options:", err.Error())
+				return nil, fmt.Errorf("failed to create franz-go consumer options: %w", err)
+			}
+			allOpts = append(allOpts, consumerOpts...)
+		}
 
 		client, err := kgo.NewClient(allOpts...)
 		if err != nil {
