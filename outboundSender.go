@@ -493,10 +493,13 @@ func (osf OutboundSenderFactory) ensureKafkaTopicExists(client *kgo.Client) erro
 	metaReq.Topics = []kmsg.MetadataRequestTopic{{Topic: kmsg.StringPtr(osf.KafkaTopic)}}
 	metaResp, err := metaReq.RequestWith(ctx, client)
 	if err != nil {
+		fmt.Println("Kafka metadata request failed: " + err.Error())
+		level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka metadata request failed: "+err.Error())
 		return fmt.Errorf("Kafka metadata request failed: %w", err)
 	}
 	for _, t := range metaResp.Topics {
 		if t.Topic != nil && *t.Topic == osf.KafkaTopic && t.ErrorCode == 0 {
+			fmt.Println("Kafka topic exists: " + osf.KafkaTopic)
 			level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka topic exists: "+osf.KafkaTopic)
 			return nil
 		}
@@ -514,15 +517,20 @@ func (osf OutboundSenderFactory) ensureKafkaTopicExists(client *kgo.Client) erro
 
 	createResp, err := createReq.RequestWith(ctx, client)
 	if err != nil {
+		fmt.Println("Kafka topic creation failed: " + err.Error())
+		level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka topic creation failed: "+err.Error())
 		return fmt.Errorf("Kafka topic creation failed: %w", err)
 	}
 
 	for _, t := range createResp.Topics {
 		switch t.ErrorCode {
 		case 0, 36:
+			fmt.Println("Kafka topic ready: " + t.Topic)
 			level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka topic ready: "+t.Topic)
 			return nil
 		default:
+			fmt.Printf("failed to create Kafka topic %s: %v", t.Topic, kerr.ErrorForCode(t.ErrorCode))
+			level.Info(osf.Logger).Log(logging.MessageKey(), "failed to create Kafka topic %s: %v", t.Topic, kerr.ErrorForCode(t.ErrorCode))
 			return fmt.Errorf("failed to create Kafka topic %s: %v", t.Topic, kerr.ErrorForCode(t.ErrorCode))
 		}
 	}
