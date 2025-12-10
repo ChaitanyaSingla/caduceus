@@ -50,6 +50,7 @@ import (
 	"github.com/go-kit/kit/metrics"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
 	"github.com/xmidt-org/ancla"
 	"github.com/xmidt-org/webpa-common/v2/device"
 	"github.com/xmidt-org/webpa-common/v2/logging"
@@ -401,6 +402,14 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		fmt.Println("Successfully created franz-go client")
 		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Successfully created franz-go client")
 
+		// Ensure topic exists, create if it doesn't
+		if err := osf.ensureKafkaTopicExists(client); err != nil {
+			client.Close()
+			fmt.Println("Failed to ensure Kafka topic exists:", err)
+			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Failed to ensure Kafka topic exists: "+err.Error())
+			return nil, fmt.Errorf("failed to ensure Kafka topic exists: %w", err)
+		}
+
 		caduceusOutboundSender.kafkaClient = client
 		caduceusOutboundSender.consumeKafkaMessageEnabled = osf.ConsumeKafkaMessageEnabled
 		caduceusOutboundSender.kafkaTopic = osf.KafkaTopic
@@ -473,6 +482,51 @@ func (osf OutboundSenderFactory) getFranzConsumerOptions() ([]kgo.Opt, error) {
 	}
 
 	return opts, nil
+}
+
+func (osf OutboundSenderFactory) ensureKafkaTopicExists(client *kgo.Client) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Check if the topic exists
+	metaReq := kmsg.NewMetadataRequest()
+	metaReq.Topics = []kmsg.MetadataRequestTopic{{Topic: kmsg.StringPtr(osf.KafkaTopic)}}
+	metaResp, err := metaReq.RequestWith(ctx, client)
+	if err != nil {
+		return fmt.Errorf("Kafka metadata request failed: %w", err)
+	}
+	for _, t := range metaResp.Topics {
+		if t.Topic != nil && *t.Topic == osf.KafkaTopic && t.ErrorCode == 0 {
+			level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka topic exists: "+osf.KafkaTopic)
+			return nil
+		}
+	}
+
+	// Create the topic if it doesn't exist
+	level.Info(osf.Logger).Log(logging.MessageKey(), "Creating Kafka topic: "+osf.KafkaTopic)
+	createReq := kmsg.NewCreateTopicsRequest()
+	createReq.Topics = []kmsg.CreateTopicsRequestTopic{{
+		Topic:             osf.KafkaTopic,
+		NumPartitions:     3,
+		ReplicationFactor: 1,
+	}}
+	createReq.TimeoutMillis = 30000
+
+	createResp, err := createReq.RequestWith(ctx, client)
+	if err != nil {
+		return fmt.Errorf("Kafka topic creation failed: %w", err)
+	}
+
+	for _, t := range createResp.Topics {
+		switch t.ErrorCode {
+		case 0, 36:
+			level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka topic ready: "+t.Topic)
+			return nil
+		default:
+			return fmt.Errorf("failed to create Kafka topic %s: %v", t.Topic, kerr.ErrorForCode(t.ErrorCode))
+		}
+	}
+	return nil
 }
 
 func (obs *CaduceusOutboundSender) flushSqsBatch() {
