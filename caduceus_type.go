@@ -76,7 +76,6 @@ type AwsSqs struct {
 type Kafka struct {
 	KafkaEnabled               bool
 	KafkaBrokers               string
-	KafkaTopic                 string
 	KafkaConsumerGroupID       string
 	ConsumeKafkaMessageEnabled bool
 	KafkaProducer              KafkaProducer
