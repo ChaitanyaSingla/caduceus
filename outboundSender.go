@@ -130,10 +130,10 @@ type OutboundSenderFactory struct {
 	// If RoleBasedAccess is enabled, accessKey and secretKey will be fetched using IAM temporary credentials
 	RoleBasedAccess bool
 
-	// AccessKey is the AWS accessKey to access dynamodb
+	// AccessKey is the AWS accessKey to access AWS SQS
 	AccessKey string
 
-	// SecretKey is the AWS secretKey to go with the accessKey to access dynamodb
+	// SecretKey is the AWS secretKey to go with the accessKey to access AWS SQS
 	SecretKey string
 
 	// FifoBasedQueue is a type of AWS SQS Queue. If not enabled, standard queue will be created
@@ -300,9 +300,9 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		clientMiddleware:  osf.ClientMiddleware,
 	}
 
-	fmt.Println("AWS SQS Enabled: ", osf.AwsSqsEnabled, " and Kafka Enabled:", osf.KafkaEnabled)
+	level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Messaging configuration: awsSqsEnabled="+
+		strconv.FormatBool(osf.AwsSqsEnabled)+", kafkaEnabled="+strconv.FormatBool(osf.KafkaEnabled))
 	if osf.AwsSqsEnabled {
-		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "AWS Sqs is enabled")
 		awsRegion, err := osf.getAwsRegionForAwsSqs()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get AWS region for AWS Sqs: %w", err)
@@ -356,13 +356,11 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 			}
 		}()
 	} else if osf.KafkaEnabled {
-		fmt.Println("Kafka Enabled with brokers:" + osf.KafkaBrokers + " and topic:" + osf.Listener.Webhook.KafkaTopic)
 		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Kafka Enabled with brokers:"+osf.KafkaBrokers+" and topic:"+osf.Listener.Webhook.KafkaTopic)
 
 		producerOpts, err := osf.getFranzProducerOptions()
 		if err != nil {
-			fmt.Println("failed to create franz-go client options: ", err)
-			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go client options:", err.Error())
+			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go client options: "+err.Error())
 			return nil, fmt.Errorf("failed to create franz-go client options: %w", err)
 		}
 
@@ -372,8 +370,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		if osf.ConsumeKafkaMessageEnabled {
 			consumerOpts, err := osf.getFranzConsumerOptions()
 			if err != nil {
-				fmt.Println("failed to create franz-go consumer options: ", err)
-				level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go consumer options:", err.Error())
+				level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go consumer options: "+err.Error())
 				return nil, fmt.Errorf("failed to create franz-go consumer options: %w", err)
 			}
 			allOpts = append(allOpts, consumerOpts...)
@@ -381,18 +378,15 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 
 		client, err := kgo.NewClient(allOpts...)
 		if err != nil {
-			fmt.Println("failed to create franz-go client: ", err)
-			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go client:", err.Error())
+			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "failed to create franz-go client: "+err.Error())
 			return nil, fmt.Errorf("failed to create franz-go client: %w", err)
 		}
 
-		fmt.Println("Successfully created franz-go client")
 		level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Successfully created franz-go client")
 
 		// Ensure topic exists, create if it doesn't
 		if err := osf.ensureKafkaTopicExists(client); err != nil {
 			client.Close()
-			fmt.Println("Failed to ensure Kafka topic exists:", err)
 			level.Info(caduceusOutboundSender.logger).Log(logging.MessageKey(), "Failed to ensure Kafka topic exists: "+err.Error())
 			return nil, fmt.Errorf("failed to ensure Kafka topic exists: %w", err)
 		}
@@ -480,13 +474,11 @@ func (osf OutboundSenderFactory) ensureKafkaTopicExists(client *kgo.Client) erro
 	metaReq.Topics = []kmsg.MetadataRequestTopic{{Topic: kmsg.StringPtr(osf.Listener.Webhook.KafkaTopic)}}
 	metaResp, err := metaReq.RequestWith(ctx, client)
 	if err != nil {
-		fmt.Println("Kafka metadata request failed: " + err.Error())
 		level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka metadata request failed: "+err.Error())
 		return fmt.Errorf("Kafka metadata request failed: %w", err)
 	}
 	for _, t := range metaResp.Topics {
 		if t.Topic != nil && *t.Topic == osf.Listener.Webhook.KafkaTopic && t.ErrorCode == 0 {
-			fmt.Println("Kafka topic exists: " + osf.Listener.Webhook.KafkaTopic)
 			level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka topic exists: "+osf.Listener.Webhook.KafkaTopic)
 			return nil
 		}
@@ -504,7 +496,6 @@ func (osf OutboundSenderFactory) ensureKafkaTopicExists(client *kgo.Client) erro
 
 	createResp, err := createReq.RequestWith(ctx, client)
 	if err != nil {
-		fmt.Println("Kafka topic creation failed: " + err.Error())
 		level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka topic creation failed: "+err.Error())
 		return fmt.Errorf("Kafka topic creation failed: %w", err)
 	}
@@ -512,11 +503,9 @@ func (osf OutboundSenderFactory) ensureKafkaTopicExists(client *kgo.Client) erro
 	for _, t := range createResp.Topics {
 		switch t.ErrorCode {
 		case 0, 36:
-			fmt.Println("Kafka topic ready: " + t.Topic)
 			level.Info(osf.Logger).Log(logging.MessageKey(), "Kafka topic ready: "+t.Topic)
 			return nil
 		default:
-			fmt.Printf("failed to create Kafka topic %s: %v", t.Topic, kerr.ErrorForCode(t.ErrorCode))
 			level.Info(osf.Logger).Log(logging.MessageKey(), "failed to create Kafka topic %s: %v", t.Topic, kerr.ErrorForCode(t.ErrorCode))
 			return fmt.Errorf("failed to create Kafka topic %s: %v", t.Topic, kerr.ErrorForCode(t.ErrorCode))
 		}
@@ -893,7 +882,6 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 	} else if obs.kafkaClient != nil {
 		msgBytes, err := json.Marshal(msg)
 		if err != nil {
-			fmt.Println("error while marshalling msg for Kafka ", err)
 			level.Info(obs.logger).Log(logging.MessageKey(), "error while marshalling msg for Kafka "+err.Error())
 			return
 		}
@@ -916,13 +904,12 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 		obs.kafkaClient.Produce(context.Background(), record, func(r *kgo.Record, err error) {
 			if err != nil && !kerr.IsRetriable(err) {
 				obs.failedSendToKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
-				fmt.Println("Failed to produce Kafka message:", err)
 				level.Info(obs.logger).Log(logging.MessageKey(), "Failed to produce Kafka message: "+err.Error())
 				return
 			}
 
 			obs.sendMsgToKafkaCounter.With("url", obs.id, "source", "kafka").Add(1.0)
-			fmt.Println("Successfully published the message to Kafka: ", msg)
+			level.Info(obs.logger).Log(logging.MessageKey(), "Successfully published the message to Kafka")
 		})
 		return
 	} else {
@@ -1035,7 +1022,6 @@ Loop:
 				if errs := fetches.Errors(); len(errs) > 0 {
 					for _, err := range errs {
 						obs.failedReceiveFromKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
-						fmt.Printf("Kafka consumer error: %v\n", err)
 						level.Info(obs.logger).Log(logging.MessageKey(), "Kafka consumer error:", err)
 					}
 					continue
@@ -1045,13 +1031,11 @@ Loop:
 					msg := &wrp.Message{}
 					if err := json.Unmarshal(rec.Value, msg); err != nil {
 						obs.failedReceiveFromKafkaMsgsCount.With("url", obs.id, "source", "kafka").Add(1.0)
-						fmt.Println("Failed to unmarshal Kafka message:", err)
 						level.Info(obs.logger).Log(logging.MessageKey(), "Failed to unmarshal Kafka message:", err.Error())
 						return
 					}
 
 					obs.receivedMsgFromKafkaCounter.With("url", obs.id, "source", "kafka").Add(1.0)
-					fmt.Println("Received Kafka message:", msg)
 					level.Info(obs.logger).Log(logging.MessageKey(), "Received Kafka message:", msg)
 
 					obs.sendMessage(msg)

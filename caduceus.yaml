@@ -429,10 +429,10 @@ sender:
     # If roleBasedAccess is enabled, accessKey and secretKey will be fetched using IAM temporary credentials
     roleBasedAccess: false
 
-    # accessKey is the AWS accessKey to access dynamodb.
+    # accessKey is the AWS accessKey to access AWS SQS.
     accessKey: "accessKey"
 
-    # secretKey is the AWS secretKey to go with the accessKey to access dynamodb.
+    # secretKey is the AWS secretKey to go with the accessKey to access AWS SQS.
     secretKey: "secretKey"
 
     # fifoBasedQueue is a type of AWS SQS Queue. If not enabled, standard queue will be created
