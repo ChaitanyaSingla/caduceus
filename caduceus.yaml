@@ -323,7 +323,7 @@ webhook:
     # (Optional)
     listen:
       # pullInterval provides how often the current webhooks list gets refreshed.
-      pullInterval: 6h
+      pullInterval: 5s
 
     # bucket is the partition name where webhooks will be stored.
     bucket: "webhooks"
@@ -416,7 +416,7 @@ sender:
 
   # disablePartnerIDs dictates whether or not to enforce the partnerID check
   # Defaults to 'false'.
-  disablePartnerIDs: true
+  disablePartnerIDs: false
 
   # awsSqs configuration is required to enable AWS SQS support.
   awsSqs:
@@ -449,6 +449,9 @@ sender:
 
     # If enabled, messages from AWS SQS will be consumed by Caduceus
     consumeSqsMessageEnabled: false
+
+    # The duration (in seconds) for which the call waits for a message to arrive in the queue before returning.
+    waitTimeSeconds: 5
   
   kafka:
     # Enable or disable Kafka integration
@@ -473,9 +476,6 @@ sender:
       # Compression type to reduce payload size and improve throughput.
       # Options: lz4, zstd, snappy, gzip, none
       kafkaCompression: lz4
-
-    # The duration (in seconds) for which the call waits for a message to arrive in the queue before returning.
-    waitTimeSeconds: 5
 
 # (Deprecated)
 # profilerFrequency: 15

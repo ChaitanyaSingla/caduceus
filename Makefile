@@ -35,9 +35,6 @@ build:
 release: build
 	upx $(APP)
 
-build-musl:
-	CGO_ENABLED=1 $(GO) build -tags musl -ldflags="-w -s" -o $(APP)
-
 docker:
 	-$(DOCKER) rmi "$(DOCKER_ORG)/$(APP):$(VERSION)"
 	-$(DOCKER) rmi "$(DOCKER_ORG)/$(APP):latest"
