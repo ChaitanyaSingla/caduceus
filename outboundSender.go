@@ -477,7 +477,7 @@ func (osf OutboundSenderFactory) getFranzProducerOptions() ([]kgo.Opt, error) {
 	}
 
 	if osf.KafkaSecurityProtocol != "" && strings.ToLower(osf.KafkaSecurityProtocol) != "plaintext" {
-		if strings.HasPrefix(strings.ToLower(osf.KafkaSecurityProtocol), "ssl") || strings.Contains(strings.ToLower(osf.KafkaSecurityProtocol), "tls") {
+		if strings.Contains(strings.ToLower(osf.KafkaSecurityProtocol), "ssl") || strings.Contains(strings.ToLower(osf.KafkaSecurityProtocol), "tls") {
 			tlsConfig := &tls.Config{
 				InsecureSkipVerify: false,
 			}
