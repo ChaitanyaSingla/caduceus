@@ -485,11 +485,11 @@ func (osf OutboundSenderFactory) getFranzProducerOptions() ([]kgo.Opt, error) {
 				rootCAs := x509.NewCertPool()
 				data, err := os.ReadFile(osf.KafkaTrustStore)
 				if err != nil {
-					return nil, fmt.Errorf("unable to read Kafka truststore: %w", err)
+					return nil, fmt.Errorf("unable to read Kafka truststore PEM file: %w", err)
 				}
 				ok := rootCAs.AppendCertsFromPEM(data)
 				if !ok {
-					return nil, fmt.Errorf("failed to append Kafka truststore certs")
+					return nil, fmt.Errorf("failed to append Kafka truststore PEM certs")
 				}
 				tlsConfig.RootCAs = rootCAs
 			}
