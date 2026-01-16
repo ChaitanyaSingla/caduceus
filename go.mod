@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.6
 
 // replace github.com/xmidt-org/ancla => /Users/chaitanyasingla/Desktop/Personal/forked-repo/ancla
-replace github.com/xmidt-org/ancla => github.com/ChaitanyaSingla/ancla v0.0.0-20251224062147-706cf043dfb1
+replace github.com/xmidt-org/ancla => github.com/ChaitanyaSingla/ancla v0.0.0-20260116110510-ed1d96d1dccb
 
 require (
 	emperror.dev/emperror v0.33.0

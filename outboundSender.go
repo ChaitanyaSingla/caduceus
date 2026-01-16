@@ -269,6 +269,7 @@ type CaduceusOutboundSender struct {
 	kafkaTopic                       string
 	kafkaClient                      *kgo.Client
 	consumeKafkaMessageEnabled       bool
+	kafkaMessageHeaders              []kgo.RecordHeader
 }
 
 // New creates a new OutboundSender object from the factory, or returns an error.
@@ -417,6 +418,7 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 		caduceusOutboundSender.kafkaClient = client
 		caduceusOutboundSender.consumeKafkaMessageEnabled = osf.ConsumeKafkaMessageEnabled
 		caduceusOutboundSender.kafkaTopic = osf.Listener.Webhook.KafkaTopic
+		caduceusOutboundSender.kafkaMessageHeaders = buildKafkaMessageHeaders(osf.Listener.Webhook.KafkaMessageHeaders)
 	}
 
 	// Don't share the secret with others when there is an error.
@@ -441,6 +443,19 @@ func (osf OutboundSenderFactory) New() (obs OutboundSender, err error) {
 	obs = caduceusOutboundSender
 
 	return
+}
+
+func buildKafkaMessageHeaders(headers map[string]string) []kgo.RecordHeader {
+	out := make([]kgo.RecordHeader, 0, len(headers))
+
+	for k, v := range headers {
+		out = append(out, kgo.RecordHeader{
+			Key:   k,
+			Value: []byte(v),
+		})
+	}
+
+	return out
 }
 
 func (osf OutboundSenderFactory) getFranzProducerOptions() ([]kgo.Opt, error) {
@@ -994,9 +1009,10 @@ func (obs *CaduceusOutboundSender) Queue(msg *wrp.Message) {
 		}
 
 		record := &kgo.Record{
-			Topic: obs.kafkaTopic,
-			Key:   []byte(key),
-			Value: msgBytes,
+			Topic:   obs.kafkaTopic,
+			Key:     []byte(key),
+			Value:   msgBytes,
+			Headers: obs.kafkaMessageHeaders,
 		}
 
 		obs.kafkaClient.Produce(context.Background(), record, func(r *kgo.Record, err error) {
